@@ -219,6 +219,7 @@ fileprivate enum SortType: CaseIterable {
 }
 
 /// A deterministic random number generator so a random sort stays stable across re-renders for a given seed.
+/// AI Generated
 fileprivate struct SeededGenerator: RandomNumberGenerator {
     private var state: UInt64
 
