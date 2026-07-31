@@ -40,6 +40,7 @@ public struct AsyncBlurImage: View {
     
     public var body: some View {
         ZStack(alignment: .top) {
+            Color.clear
             if let blurImage {
                 Image(uiImage: blurImage)
                     .resizable()
