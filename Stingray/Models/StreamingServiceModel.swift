@@ -305,6 +305,8 @@ public final class JellyfinModel: SystemInfoProviding, LibraryProviding, PlayerP
     ) -> JellyfinModel {
         if var existingUser = userModel.getUser(id: response.userId) { // User already exists, just update access
             existingUser.serviceType = .Jellyfin(UserJellyfin(accessToken: response.accessToken, sessionID: response.sessionId))
+            existingUser.serviceURL = url
+            existingUser.serviceID = response.serverId
             userModel.addUser(existingUser)
         }
         else { // User doesn't exist, setup from scratch

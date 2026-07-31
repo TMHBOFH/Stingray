@@ -22,7 +22,6 @@ public struct ErrorView: View {
         Button { self.isExpanded = true }
         label: { ErrorSummaryView(summary: summary, altColors: isFocused) }
             .buttonStyle(.plain)
-            .padding(.horizontal, 70)
             .focused($isFocused, equals: true)
             .sheet(isPresented: $isExpanded) { ErrorExpandedView(errorDesc: error.rDescription) }
     }

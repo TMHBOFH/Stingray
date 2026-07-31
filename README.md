@@ -76,6 +76,8 @@ Configure Stingray to look and feel how you want it.
   - Slightly darken the background of the Notes App theme to improve the legibility of buttons
   - Add a missing "No image available" placeholder for people with no images
   - Add marquee-style text for people's names and roles
+- User Management
+  - If Stingray fails to login, provide options to retry and update the user's login
 - Cleanups
   - Repo Organization
     - Rename "Other-Assets" to "Other Assets"
@@ -126,8 +128,6 @@ Configure Stingray to look and feel how you want it.
       - Improved thread control
       - Allow seasons to continue downloading during and after all shows load
   - Reduce hitching during video playback by moving playback updates off the UI thread
-
-## TODO List
 
 ### Media Picker
 

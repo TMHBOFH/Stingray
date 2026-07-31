@@ -123,9 +123,9 @@ public final class UserModel: UserModelProtocol {
 
 /// Basic structure for a user
 public struct User: UserProtocol, Codable, Identifiable, Hashable {
-    public let serviceURL: URL
+    public var serviceURL: URL
     public var serviceType: ServiceType
-    public let serviceID: String
+    public var serviceID: String
     public let id: String
     public let displayName: String
 

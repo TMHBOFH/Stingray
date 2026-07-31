@@ -15,6 +15,9 @@ public struct DashboardView: View {
     @Binding public var deepLinkRequest: DeepLinkRequest?
     @Binding public var loggedIn: LoginState
 
+    @Environment(UserModel.self) public var userModel: UserModel
+    @Environment(SettingsModel.self) public var settings: SettingsModel
+
     public var body: some View {
         VStack {
             switch self.streamingService.libraryStatus {
@@ -25,10 +28,33 @@ public struct DashboardView: View {
                         .font(.title)
                         .bold()
                     Spacer()
-                    ProfilePickerView(loginState: self.$loggedIn)
+                    ProfilePickerView(loginState: $loggedIn)
                         .padding(.vertical)
-                    ErrorView(error: err, summary: "The server formatted the library's metadata unexpectedly.")
-                        .padding(.vertical)
+                    HStack(alignment: .center) {
+                        ErrorView(error: err, summary: "The server formatted the library's metadata unexpectedly.")
+                        NavigationLink { AddServerView(loginState: $loggedIn) }
+                        label: { Text("Update Login...") }
+                        if let activeUser = userModel.activeUser {
+                            Button {
+                                switch activeUser.serviceType {
+                                case .Jellyfin(let userJellyfin):
+                                    self.loggedIn = .loggedIn(
+                                        JellyfinModel(
+                                            userDisplayName: activeUser.displayName,
+                                            userID: activeUser.id,
+                                            serviceID: activeUser.serviceID,
+                                            accessToken: userJellyfin.accessToken,
+                                            sessionID: userJellyfin.sessionID,
+                                            serviceURL: activeUser.serviceURL
+                                        )
+                                    )
+                                }
+                            }
+                            label: { Text("Retry") }
+                        }
+                    }
+                    .padding(.vertical)
+
                     SystemInfoView(streamingService: self.streamingService)
                     Spacer()
                 }
@@ -40,25 +66,20 @@ public struct DashboardView: View {
                         Text(self.streamingService.usersName)
                     }
 
-                    Tab(value: "search") {
-                        SearchView(streamingService: self.streamingService, navigation: $navigationPath)
-                    } label: {
-                        Text("Search")
-                    }
+                    Tab(value: "search") { SearchView(streamingService: self.streamingService, navigation: $navigationPath) }
+                    label: { Text("Search") }
                     Tab(value: "home") {
                         ScrollView {
                             HomeView(streamingService: self.streamingService, navigation: $navigationPath)
                                 .scrollClipDisabled()
                         }
-                    } label: {
-                        Text("Home")
                     }
+                    label: { Text("Home") }
                     ForEach(libraries.indices, id: \.self) { index in
                         Tab(value: libraries[index].id) {
                             LibraryView(library: libraries[index], navigation: $navigationPath, streamingService: self.streamingService)
-                        } label: {
-                            Text(libraries[index].title)
                         }
+                        label: { Text(libraries[index].title) }
                     }
                 }
             }
