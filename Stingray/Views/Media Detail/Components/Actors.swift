@@ -30,7 +30,7 @@ public struct PeopleBrowserView: View {
             LazyHStack {
                 ForEach(self.people, id: \.id) { person in
                     Button { /* Temp Focus Workaround */ } label: {
-                        VStack {
+                        VStack(spacing: 0) {
                             if let blurHash = person.imageHashes?.primary {
                                 AsyncBlurImage(
                                     blurHash: blurHash,
@@ -56,19 +56,15 @@ public struct PeopleBrowserView: View {
                                 .frame(width: 350, height: 600)
                                 .clipShape(RoundedRectangle(cornerRadius: 16))
                             }
-                            Text(person.name)
-                                .multilineTextAlignment(.center)
-                                .font(.headline)
+                            MarqueeText(text: person.name, animate: self.focusedActor == person.id, font: .headline)
                                 .foregroundStyle(
                                     self.focusedActor == person.id ? AnyShapeStyle(.black) : self.theme.currentTheme.header2
                                 )
-                            Text(person.role)
-                                .multilineTextAlignment(.center)
-                                .font(.caption)
+                            MarqueeText(text: person.role, animate: self.focusedActor == person.id, font: .caption)
                         }
                     }
                     .buttonStyle(.plain)
-                    .focused(self.$focusedActor, equals: person.id)
+                    .focused($focusedActor, equals: person.id)
                     .frame(width: 350)
                 }
             }

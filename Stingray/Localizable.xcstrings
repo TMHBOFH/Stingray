@@ -4,6 +4,10 @@
     "" : {
       "shouldTranslate" : false
     },
+    " • " : {
+      "comment" : "A separator between text.",
+      "shouldTranslate" : false
+    },
     "\"%@\" " : {
       "comment" : "Wrap a String in quotes",
       "localizations" : {
