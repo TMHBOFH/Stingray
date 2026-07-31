@@ -31,13 +31,31 @@ public struct PeopleBrowserView: View {
                 ForEach(self.people, id: \.id) { person in
                     Button { /* Temp Focus Workaround */ } label: {
                         VStack {
-                            AsyncBlurImage(
-                                blurHash: person.imageHashes?.primary,
-                                blurSize: CGSize(width: 30, height: 45),
-                                imageURL: self.streamingService.getImageURL(imageType: .primary, mediaID: person.id, width: 600)
-                            )
-                            .frame(width: 350, height: 600)
-                            .clipShape(RoundedRectangle(cornerRadius: 16))
+                            if let blurHash = person.imageHashes?.primary {
+                                AsyncBlurImage(
+                                    blurHash: blurHash,
+                                    blurSize: CGSize(width: 30, height: 45),
+                                    imageURL: self.streamingService.getImageURL(imageType: .primary, mediaID: person.id, width: 600)
+                                )
+                                .frame(width: 350, height: 600)
+                                .clipShape(RoundedRectangle(cornerRadius: 16))
+                            }
+                            else {
+                                ZStack {
+                                    Color.gray
+                                    VStack {
+                                        Image(systemName: "person.slash.fill")
+                                            .accessibilityLabel("Missing person icon")
+                                            .accessibilityHidden(true)
+                                            .font(.title)
+                                        Text("No image available")
+                                            .font(.headline)
+                                            .multilineTextAlignment(.center)
+                                    }
+                                }
+                                .frame(width: 350, height: 600)
+                                .clipShape(RoundedRectangle(cornerRadius: 16))
+                            }
                             Text(person.name)
                                 .multilineTextAlignment(.center)
                                 .font(.headline)

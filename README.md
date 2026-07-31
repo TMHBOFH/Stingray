@@ -74,6 +74,7 @@ Configure Stingray to look and feel how you want it.
   - Filter libraries and search by genre and maturity
   - Sort libraries and search by title, sort title, duration, release date, and random
   - Slightly darken the background of the Notes App theme to improve the legibility of buttons
+  - Add a missing "No image available" placeholder for people with no images
 - Cleanups
   - Repo Organization
     - Rename "Other-Assets" to "Other Assets"
