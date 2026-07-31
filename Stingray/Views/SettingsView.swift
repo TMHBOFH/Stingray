@@ -25,6 +25,8 @@ public struct SettingsView: View {
     /// Controlls the sheet to show the current session's logs
     @State private var showLogs: Bool = false
 
+    @State private var showRefreshLogin: Bool = false
+
     public let streamingService: UserProviding
 
     public var body: some View {
@@ -52,6 +54,13 @@ public struct SettingsView: View {
                             .ignoresSafeArea()
                     }
                 }
+                DoubleButton(label: "Update Login...", sublabel: "") { self.showRefreshLogin = true }
+                    .fullScreenCover(isPresented: $showRefreshLogin) {
+                        AddServerView(loginState: $loginState) // This view updates existing users access
+                            .padding(64)
+                            .stingrayBackground()
+                            .ignoresSafeArea()
+                    }
                 if let user = self.userModel.activeUser {
                     DoubleButton(label: "Logout...", sublabel: "", role: .destructive) { self.showLogoutAlert = true }
                         .alert(
@@ -107,9 +116,7 @@ public struct SettingsView: View {
                     ForEach(PlaybackSpeed.allCases, id: \.value) { speed in
                         Button { settings.playbackSpeed = speed }
                         label: {
-                            if settings.playbackSpeed == speed {
-                                Label(speed.name, systemImage: "checkmark")
-                            }
+                            if settings.playbackSpeed == speed { Label(speed.name, systemImage: "checkmark") }
                             else { Text(speed.name) }
                         }
                     }
