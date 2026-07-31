@@ -554,7 +554,21 @@ public final class JellyfinAdvancedNetwork: AdvancedNetworkProtocol {
                     case .error(let error):
                         media.mediaType = .error(error)
                         Log.warning("Failed to get content for show \(response.0): \(error.rDescription())")
-                    case .success(let newSeasons): media.mediaType = .tv(newSeasons)
+                    case .success(let newSeasons):
+                        // Save the episodes
+                        media.mediaType = .tv(newSeasons)
+                        // Save all the people
+                        var people: [any MediaPersonProtocol] = media.people
+                        // We don't use IDs here because people across a series can have different IDs. This prevents duplicates
+                        var seenIDs: Set<String> = Set(media.people.map { $0.name + $0.role })
+                        for season in newSeasons {
+                            for episode in season.episodes {
+                                for person in episode.people where seenIDs.insert(person.name + person.role).inserted {
+                                    people.append(person)
+                                }
+                            }
+                        }
+                        media.people = people
                     }
                     getSeasonMedia(accessToken: accessToken, showID: activeMedia?.id)
                     activeMedia = mediaIterator.next()
