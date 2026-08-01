@@ -64,6 +64,7 @@ Configure Stingray to look and feel how you want it.
 - Features
   - Settings
     - A new toggle to allow the search tab to search through TV episode titles
+    - If Stingray fails to login, provide options to retry and update the user's login
   - UI
     - Apply the media title shadow directly to the media title
     - Collect all people from episodes and display them for the season
@@ -77,8 +78,6 @@ Configure Stingray to look and feel how you want it.
   - Add a missing "No image available" placeholder for people with no images
   - Add marquee-style text for people's names and roles
   - Add a proper loading indicator to the TV show play button
-- User Management
-  - If Stingray fails to login, provide options to retry and update the user's login
 - Cleanups
   - Repo Organization
     - Rename "Other-Assets" to "Other Assets"
@@ -100,7 +99,7 @@ Configure Stingray to look and feel how you want it.
   - Remove practically unused `completed` and `unloaded` statuses for individual libraries
   - Remove the redundant `waiting` status for streaming service libraries status
   - Remove the poorly used library media type
-  - Add season sync status with `
+  - Add season sync status with `TVSeasonsAvailable`
 - Bug Fixes
   - Specify do not sleep while playing video
   - Allow moving from media metadata to play button
