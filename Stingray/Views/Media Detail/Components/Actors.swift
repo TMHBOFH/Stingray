@@ -28,7 +28,7 @@ public struct PeopleBrowserView: View {
     public var body: some View {
         ScrollView(.horizontal) {
             LazyHStack {
-                ForEach(self.people, id: \.id) { person in
+                ForEach(self.people, id: \.nameRoleID) { person in
                     Button { /* Temp Focus Workaround */ } label: {
                         VStack(spacing: 0) {
                             if let blurHash = person.imageHashes?.primary {
