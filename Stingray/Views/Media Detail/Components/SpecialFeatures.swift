@@ -20,13 +20,8 @@ public struct SpecialFeaturesView: View {
             switch self.media.specialFeatures {
             case .unloaded:
                 Color.clear
-                    .task {
-                        Log.info("Attempting to get special features for \(self.media.title)...")
-                        do { try await self.streamingService.getSpecialFeatures(for: self.media) }
-                        catch {}
-                    }
-            case .loading:
-                ProgressView("Loading special features...")
+                    .onAppear { self.streamingService.getExtraMediaData(for: self.media, priority: .high) }
+            case .loading: ProgressView("Loading special features...")
             case .loaded(let rows):
                 ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
                     SpecialFeaturesRow(streamingService: self.streamingService, rowData: row, media: self.media, navigation: $navigation)

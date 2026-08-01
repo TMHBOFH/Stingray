@@ -115,12 +115,25 @@ public protocol AdvancedNetworkProtocol {
     /// - Parameters:
     ///   - mediaID: ID of media to gather special features for
     ///   - accessToken: Access token for the server
+    ///   - priority: Connection pool the request runs on. `.high` "skips the line".
     /// - Returns: Special features
-    func loadSpecialFeatures(mediaID: String, accessToken: String) async throws(AdvancedNetworkErrors) -> [SpecialFeature]
-    
+    func loadSpecialFeatures(
+        mediaID: String,
+        accessToken: String,
+        priority: RequestPriority
+    ) async throws(AdvancedNetworkErrors) -> [SpecialFeature]
+
     /// Expire a session token with the streaming service
     /// - Parameter accessToken: The token used to authenticate transactions
     func logoutUser(accessToken: String) async
+    
+    /// Request all seasons and episodes of a show at some priority
+    /// - Parameters:
+    ///   - accessToken: Access token for the server
+    ///   - showID: Media ID for the show
+    ///   - priority: How prudent the syncing is
+    /// - Returns: Formatted seasons
+    func getSeasonMedia(accessToken: String, showID: String, priority: RequestPriority) async throws -> [TVSeason]
 }
 
 public enum LibraryMediaSortOrder: String {
@@ -498,35 +511,14 @@ public final class JellyfinAdvancedNetwork: AdvancedNetworkProtocol {
                 var mediaIterator = media.makeIterator()
                 var activeMedia: MediaModel? = mediaIterator.next()
 
-                func getSeasonMedia(accessToken: String, showID: String?) {
+                func getSeasonMedia(accessToken: String, showID: String?) { // A nice little wrapper around the actual getSeasonMedia func
                     guard let showID = showID
                     else { return }
-                    struct Root: Decodable {
-                        let items: [TVSeason]
-
-                        init(from decoder: Decoder) throws(JSONError) {
-                            // Decoding always runs on the main actor
-                            do { self.items = try MainActor.assumeIsolated { try TVSeason.decodeSeasons(from: decoder) } }
-                            catch { throw JSONError.failedJSONDecode("Season Media Root", error) }
-                        }
-                    }
                     group.addTask {
-                        let params : [URLQueryItem] = [
-                            URLQueryItem(name: "enableImages", value: "true"),
-                            URLQueryItem(name: "fields", value: "MediaSources"),
-                            URLQueryItem(name: "fields", value: "Overview"),
-                            URLQueryItem(name: "fields", value: "People"),
-                            URLQueryItem(name: "sortBy", value: "AiredEpisodeOrder")
-                        ]
                         do {
-                            let response: Root = try await self.network.request(
-                                verb: .get,
-                                path: "/Shows/\(showID)/Episodes",
-                                headers: ["X-MediaBrowser-Token":accessToken],
-                                urlParams: params,
-                                body: nil
-                            )
-                            return (showID, SeasonContent.success(response.items))
+                            return (showID, SeasonContent.success(
+                                try await self.getSeasonMedia(accessToken: accessToken, showID: showID, priority: .standard)
+                            ))
                         }
                         catch let error as RError {
                             await MainActor.run { Log.warning("Network request failed for show: \(showID): \(error.rDescription())") }
@@ -540,9 +532,24 @@ public final class JellyfinAdvancedNetwork: AdvancedNetworkProtocol {
                     }
                 }
 
+                @MainActor func getNextShow() -> MediaModel? { // Only pull unloaded media
+                    var media = mediaIterator.next()
+                    while media != nil {
+                        switch media?.mediaType {
+                        case .tv(let seasonsAvailable):
+                            switch seasonsAvailable {
+                            case .unloaded: return media
+                            case .loading, .loaded: media = mediaIterator.next()
+                            }
+                        default: media = mediaIterator.next()
+                        }
+                    }
+                    return nil
+                }
+
                 for _ in 0..<10 { // Max of 10 tasks at a time
                     getSeasonMedia(accessToken: accessToken, showID: activeMedia?.id)
-                    activeMedia = mediaIterator.next()
+                    activeMedia = getNextShow()
                 }
                 for await response in group {
                     guard let media = media.first(where: { $0.id == response.0 })
@@ -554,27 +561,51 @@ public final class JellyfinAdvancedNetwork: AdvancedNetworkProtocol {
                     case .error(let error):
                         media.mediaType = .error(error)
                         Log.warning("Failed to get content for show \(response.0): \(error.rDescription())")
-                    case .success(let newSeasons):
-                        // Save the episodes
-                        media.mediaType = .tv(newSeasons)
-                        // Save all the people
-                        var people: [any MediaPersonProtocol] = media.people
-                        // We don't use IDs here because people across a series can have different IDs. This prevents duplicates
-                        var seenIDs: Set<String> = Set(media.people.map { $0.name + $0.role })
-                        for season in newSeasons {
-                            for episode in season.episodes {
-                                for person in episode.people where seenIDs.insert(person.name + person.role).inserted {
-                                    people.append(person)
-                                }
-                            }
-                        }
-                        media.people = people
+                    case .success(let newSeasons): media.loadSeasons(.loaded(newSeasons))
                     }
                     getSeasonMedia(accessToken: accessToken, showID: activeMedia?.id)
-                    activeMedia = mediaIterator.next()
+                    activeMedia = getNextShow()
                     // When we finish with the tasks, we simply fall out of the loop and don't start a new task
                 }
             }
+    }
+
+    public func getSeasonMedia(accessToken: String, showID: String, priority: RequestPriority) async throws -> [TVSeason] {
+        struct Root: Decodable {
+            let items: [TVSeason]
+
+            init(from decoder: Decoder) throws(JSONError) {
+                // Decoding always runs on the main actor
+                do { self.items = try MainActor.assumeIsolated { try TVSeason.decodeSeasons(from: decoder) } }
+                catch { throw JSONError.failedJSONDecode("Season Media Root", error) }
+            }
+        }
+        let params : [URLQueryItem] = [
+            URLQueryItem(name: "enableImages", value: "true"),
+            URLQueryItem(name: "fields", value: "MediaSources"),
+            URLQueryItem(name: "fields", value: "Overview"),
+            URLQueryItem(name: "fields", value: "People"),
+            URLQueryItem(name: "sortBy", value: "AiredEpisodeOrder")
+        ]
+        do {
+            let response: Root = try await self.network.request(
+                verb: .get,
+                path: "/Shows/\(showID)/Episodes",
+                headers: ["X-MediaBrowser-Token":accessToken],
+                urlParams: params,
+                body: nil,
+                priority: priority
+            )
+            return response.items
+        }
+        catch let error as RError {
+            await MainActor.run { Log.warning("Network request failed for show: \(showID): \(error.rDescription())") }
+            throw LibraryErrors.gettingSeason(error, showID)
+        }
+        catch {
+            await MainActor.run { Log.warning("network request failed like crazy for show \(showID): \(error.localizedDescription)") }
+            throw LibraryErrors.unknown("Season ID: \(showID)")
+        }
     }
 
     public func getMediaImageURL(accessToken: String, imageType: MediaImageType, mediaID: String, width: Int) -> URL? {
@@ -806,14 +837,19 @@ public final class JellyfinAdvancedNetwork: AdvancedNetworkProtocol {
         return network.buildURL(path: "/UserImage", urlParams: params)
     }
     
-    public func loadSpecialFeatures(mediaID: String, accessToken: String) async throws(AdvancedNetworkErrors) -> [SpecialFeature] {
+    public func loadSpecialFeatures(
+        mediaID: String,
+        accessToken: String,
+        priority: RequestPriority
+    ) async throws(AdvancedNetworkErrors) -> [SpecialFeature] {
         do {
             return try await network.request(
                 verb: .get,
                 path: "/Items/\(mediaID)/SpecialFeatures",
                 headers: ["X-MediaBrowser-Token": accessToken],
                 urlParams: nil,
-                body: nil
+                body: nil,
+                priority: priority
             )
         } catch { throw AdvancedNetworkErrors.failedSpecialFeatures(error) }
     }

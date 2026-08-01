@@ -16,7 +16,7 @@ public struct TVShowDetailView: View {
     /// Streaming service the user is using
     public let streamingService: PlayerProviding & MediaImageProviding & MediaProviding
 
-    public let seasons: [any TVSeasonProtocol]?
+    public let seasons: TVSeasonsAvailable
 
     @Binding public var navigation: NavigationPath
 
@@ -86,16 +86,16 @@ public struct TVShowDetailView: View {
                         return true
                     }
                 }())
-                .disabled(self.seasons == nil)
 
                 // TV Episodes
-                if self.seasons?.flatMap(\.episodes).count ?? 0 > 1 {
+                switch self.seasons {
+                case .loaded(let seasons):
                     // Season selector
                     ScrollViewReader { svrProxy in
                         ScrollView(.horizontal) {
                             HStack {
                                 SeasonSelectorView(
-                                    seasons: self.seasons ?? [],
+                                    seasons: seasons,
                                     focus: $focus,
                                     scrollProxy: svrProxy
                                 )
@@ -110,7 +110,7 @@ public struct TVShowDetailView: View {
                             LazyHStack {
                                 EpisodeSelectorView(
                                     media: media,
-                                    seasons: self.seasons ?? [],
+                                    seasons: seasons,
                                     streamingService: streamingService,
                                     focus: $focus,
                                     navigation: $navigation
@@ -118,7 +118,7 @@ public struct TVShowDetailView: View {
                             }
                         }
                         .task {
-                            if let nextEpisodeID = self.seasons?.nextUp()?.id {
+                            if let nextEpisodeID = seasons.nextUp()?.id {
                                 svrProxy.scrollTo(nextEpisodeID, anchor: .center)
                             }
                         }
@@ -127,6 +127,7 @@ public struct TVShowDetailView: View {
                         .padding(.bottom)
                         .offset(y: shouldRevealBottomShelf ? 0 : -100)
                     }
+                default: EmptyView()
                 }
 
                 // Metadata
@@ -192,7 +193,7 @@ fileprivate struct PlayNavigationView: View {
     private let streamingService: PlayerProviding & MediaImageProviding
     private var title: String
     private let mediaSources: [any MediaSourceProtocol]
-    private let seasons: [any TVSeasonProtocol]
+    private let seasons: TVSeasonsAvailable
 
     @Binding var navigation: NavigationPath
 
@@ -201,111 +202,138 @@ fileprivate struct PlayNavigationView: View {
     init(
         navigation: Binding<NavigationPath>,
         media: any MediaProtocol,
-        seasons: [any TVSeasonProtocol]?,
+        seasons seasonsAvailable: TVSeasonsAvailable,
         streamingService: PlayerProviding & MediaImageProviding
     ) {
         self._navigation = navigation
         self.media = media
         self.streamingService = streamingService
-        self.seasons = seasons ?? []
-        guard let nextEpisode = seasons?.nextUp()
-        else {
-            self.title = "Loading..."
+        self.seasons = seasonsAvailable
+        switch seasonsAvailable {
+        case .unloaded, .loading:
             self.mediaSources = []
-            return
+            self.title = String(localized: "Loading...")
+        case .loaded(let seasons):
+            guard let nextEpisode = seasons.nextUp()
+            else {
+                self.title = String(localized: "Loading...")
+                self.mediaSources = []
+                break
+            }
+            self.title = nextEpisode.title
+            self.mediaSources = nextEpisode.mediaSources
         }
-        self.title = nextEpisode.title
-        self.mediaSources = nextEpisode.mediaSources
     }
 
     var body: some View {
         Group {
-            // Single source button and menu
-            if mediaSources.count == 1 {
-                let mediaSource = self.mediaSources[0]
-                // Single item that's unwatched - show button
-                if mediaSource.startPoint == 0 {
-                    Button {
-                        self.navigation.append(
-                            TVPlayerViewModel(
-                                media: media,
-                                mediaSource: mediaSource,
-                                startTime: CMTimeMakeWithSeconds(mediaSource.startPoint, preferredTimescale: 1),
-                                streamingService: self.streamingService,
-                                seasons: self.seasons,
-                                settingsModel: self.settings,
-                            )
-                        )
-                    } label: { Label(self.title, systemImage: "play.fill") }
-                        .accessibilityLabel("Play button")
-                }
-                // Single item that's partially watched - show streamlined menu
-                else {
-                    Menu("\(Image(systemName: "play")) \(title)") {
-                        Button { navigateToPlayer(for: mediaSource, startPoint: mediaSource.startPoint) }
-                        label: {
-                            Label("Resume \(media.title)", systemImage: "play.fill")
-                            Text("Continue from \(String(duration: mediaSource.startPoint))")
-                        }
-                        Button { navigateToPlayer(for: mediaSource, startPoint: .zero) }
-                        label: { Label("Restart \(media.title)", systemImage: "memories") }
+            switch self.seasons {
+            case .unloaded, .loading:
+                Button { }
+                label: {
+                    HStack(spacing: 10) {
+                        ProgressView()
+                        Text("Loading...")
+                            .foregroundStyle(.secondary)
                     }
-                    .accessibilityLabel("Play button menu")
                 }
-            }
-            // Multiple media sources
-            else {
-                // If there are multiple sources but all unwatched, show only "play" options that start from beginning
-                if (mediaSources.allSatisfy { $0.startPoint == 0 }) {
-                    Menu("\(Image(systemName: "play")) \(title)") {
-                        ForEach(mediaSources, id: \.id) { mediaSource in
+            default:
+                // Single source button and menu
+                if mediaSources.count == 1 {
+                    let mediaSource = self.mediaSources[0]
+                    // Single item that's unwatched - show button
+                    if mediaSource.startPoint == 0 {
+                        Button {
+                            switch self.seasons {
+                            case .loaded(let seasons):
+                                self.navigation.append(
+                                    TVPlayerViewModel(
+                                        media: media,
+                                        mediaSource: mediaSource,
+                                        startTime: CMTimeMakeWithSeconds(mediaSource.startPoint, preferredTimescale: 1),
+                                        streamingService: self.streamingService,
+                                        seasons: seasons,
+                                        settingsModel: self.settings,
+                                    )
+                                )
+                            default: break
+                            }
+                        }
+                        label: { Label(self.title, systemImage: "play.fill") }
+                            .accessibilityLabel("Play button")
+                    }
+                    // Single item that's partially watched - show streamlined menu
+                    else {
+                        Menu("\(Image(systemName: "play")) \(title)") {
                             Button { navigateToPlayer(for: mediaSource, startPoint: mediaSource.startPoint) }
-                            label: { Label(mediaSource.name, systemImage: "play.fill") }
-                                .id(mediaSource.id)
+                            label: {
+                                Label("Resume \(media.title)", systemImage: "play.fill")
+                                Text("Continue from \(String(duration: mediaSource.startPoint))")
+                            }
+                            Button { navigateToPlayer(for: mediaSource, startPoint: .zero) }
+                            label: { Label("Restart \(media.title)", systemImage: "memories") }
                         }
+                        .accessibilityLabel("Play button menu")
                     }
-                    .accessibilityLabel("Play button menu")
                 }
-                // If there's any that are somewhat played, present options to restart
+                // Multiple media sources
                 else {
-                    Menu("\(Image(systemName: "play")) \(title)") {
-                        Section("Resume") {
+                    // If there are multiple sources but all unwatched, show only "play" options that start from beginning
+                    if (mediaSources.allSatisfy { $0.startPoint == 0 }) {
+                        Menu("\(Image(systemName: "play")) \(title)") {
                             ForEach(mediaSources, id: \.id) { mediaSource in
-                                if mediaSource.startPoint != 0 {
-                                    Button { navigateToPlayer(for: mediaSource, startPoint: mediaSource.startPoint)
-                                    } label: {
-                                        Label(mediaSource.name, systemImage: "play.fill")
-                                        Text("Continue from \(String(duration: mediaSource.startPoint))")
-                                    }
+                                Button { navigateToPlayer(for: mediaSource, startPoint: mediaSource.startPoint) }
+                                label: { Label(mediaSource.name, systemImage: "play.fill") }
                                     .id(mediaSource.id)
+                            }
+                        }
+                        .accessibilityLabel("Play button menu")
+                    }
+                    // If there's any that are somewhat played, present options to restart
+                    else {
+                        Menu("\(Image(systemName: "play")) \(title)") {
+                            Section("Resume") {
+                                ForEach(mediaSources, id: \.id) { mediaSource in
+                                    if mediaSource.startPoint != 0 {
+                                        Button { navigateToPlayer(for: mediaSource, startPoint: mediaSource.startPoint)
+                                        } label: {
+                                            Label(mediaSource.name, systemImage: "play.fill")
+                                            Text("Continue from \(String(duration: mediaSource.startPoint))")
+                                        }
+                                        .id(mediaSource.id)
+                                    }
+                                }
+                            }
+                            Section("Restart") {
+                                ForEach(mediaSources, id: \.id) { mediaSource in
+                                    Button { navigateToPlayer(for: mediaSource, startPoint: .zero) }
+                                    label: { Label(mediaSource.name, systemImage: "memories") }
+                                        .id(mediaSource.id)
                                 }
                             }
                         }
-                        Section("Restart") {
-                            ForEach(mediaSources, id: \.id) { mediaSource in
-                                Button { navigateToPlayer(for: mediaSource, startPoint: .zero) }
-                                label: { Label(mediaSource.name, systemImage: "memories") }
-                                    .id(mediaSource.id)
-                            }
-                        }
+                        .accessibilityLabel("Play button menu")
                     }
-                    .accessibilityLabel("Play button menu")
                 }
             }
         }
     }
 
     func navigateToPlayer(for mediaSource: any MediaSourceProtocol, startPoint: TimeInterval) {
-        self.navigation.append(
-            TVPlayerViewModel(
-                media: media,
-                mediaSource: mediaSource,
-                startTime: CMTimeMakeWithSeconds(startPoint, preferredTimescale: 1),
-                streamingService: self.streamingService,
-                seasons: self.seasons,
-                settingsModel: self.settings
+        switch self.seasons {
+        case .unloaded, .loading: break
+        case .loaded(let seasons):
+            self.navigation.append(
+                TVPlayerViewModel(
+                    media: media,
+                    mediaSource: mediaSource,
+                    startTime: CMTimeMakeWithSeconds(startPoint, preferredTimescale: 1),
+                    streamingService: self.streamingService,
+                    seasons: seasons,
+                    settingsModel: self.settings
+                )
             )
-        )
+        }
     }
 }
 

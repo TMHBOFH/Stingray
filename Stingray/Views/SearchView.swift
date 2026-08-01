@@ -99,15 +99,18 @@ public struct SearchView: View {
                             // If it's not already a perfect match, search the episodes if there are any
                             if score != 0 && self.settings.searchEpisodeTitles {
                                 switch $0.mediaType {
-                                case .tv(let seasons):
-                                    guard let seasons = seasons else { return MediaScore(media: $0, score: score, sortTitle: $0.title)}
-                                    for season in seasons {
-                                        for episode in season.episodes {
-                                            score = min(score, episode.title.slidingLevenshteinDistance(to: self.searchText))
-                                            sortTitle = episode.title
+                                case .tv(let seasonsAvailable):
+                                    switch seasonsAvailable {
+                                    case .loaded(let seasons):
+                                        for season in seasons {
+                                            for episode in season.episodes {
+                                                score = min(score, episode.title.slidingLevenshteinDistance(to: self.searchText))
+                                                sortTitle = episode.title
+                                                if score == 0 { break } // If it's not already a perfect match, search more episodes
+                                            }
                                             if score == 0 { break } // If it's not already a perfect match, search more episodes
                                         }
-                                        if score == 0 { break } // If it's not already a perfect match, search more episodes
+                                    default: return MediaScore(media: $0, score: score, sortTitle: $0.title)
                                     }
                                 default: return MediaScore(media: $0, score: score, sortTitle: $0.title)
                                 }

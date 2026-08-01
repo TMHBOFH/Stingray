@@ -87,9 +87,10 @@ public protocol MediaProviding {
     /// - Returns: The found media, noting if the library is not yet finished fetching.
     func lookup(mediaID: String, parentID: String?) -> MediaLookupStatus
 
-    /// Fetch the special features for media.
+    /// Fetch any additional data (ex special features) for this media.
     /// - Parameter media: Media to fetch for.
-    func getSpecialFeatures(for media: any MediaProtocol) async throws(LibraryErrors)
+    /// - Parameter priority: How prudent the info is to get right now
+    func getExtraMediaData(for media: any MediaProtocol, priority: RequestPriority)
 }
 
 /// Denotes the availablity of a piece of media
@@ -385,7 +386,7 @@ public final class JellyfinModel: SystemInfoProviding, LibraryProviding, PlayerP
                                     count: batchSize,
                                     sortOrder: .ascending,
                                     sortBy: .SortName,
-                                    mediaTypes: [.movies([]), .tv([])]
+                                    mediaTypes: [.movies([]), .tv(.unloaded)]
                                 )
                             )
                         )
@@ -505,15 +506,63 @@ public final class JellyfinModel: SystemInfoProviding, LibraryProviding, PlayerP
         return networkAPI.getMediaImageURL(accessToken: accessToken, imageType: imageType, mediaID: mediaID, width: width)
     }
 
-    public func getSpecialFeatures(for media: any MediaProtocol) async throws(LibraryErrors) {
-        do {
-            media.loadSpecialFeatures(
-                specialFeatures: try await self.networkAPI.loadSpecialFeatures(mediaID: media.id, accessToken: self.accessToken)
-            )
+    public func getExtraMediaData(for media: any MediaProtocol, priority: RequestPriority) {
+        switch media.mediaType { // Episodes
+        case .tv(let seasonsAvailable):
+            switch seasonsAvailable {
+            case .unloaded:
+                media.loadSeasons(.loading)
+                Task(priority: priority == .high ? .high : nil) {
+                    do {
+                        media.loadSeasons(
+                            .loaded(try await self.networkAPI.getSeasonMedia(
+                                accessToken: self.accessToken,
+                                showID: media.id,
+                                priority: .high
+                            ))
+                        )
+                    }
+                    catch let error as RError {
+                        Log.warning("Failed to load seasons: \(LibraryErrors.gettingSeasons(error, media.id).rDescription())")
+                        return
+                    }
+                    catch {
+                        Log.warning(
+                            "Failed to generate correct error for failed seasons load: " +
+                            LibraryErrors.gettingSeasons(nil, media.id).rDescription()
+                        )
+                        return
+                    }
+                }
+            case .loading, .loaded: break
+            }
+        default: break
         }
-        catch {
-            Log.warning("Failed to load special features")
-            throw LibraryErrors.specialFeaturesFailed(error, media.title)
+        Task(priority: priority == .high ? .high : nil) { // Special features
+            switch media.specialFeatures {
+            case .unloaded:
+                do {
+                    media.loadSpecialFeatures(
+                        specialFeatures: try await self.networkAPI.loadSpecialFeatures(
+                            mediaID: media.id,
+                            accessToken: self.accessToken,
+                            priority: .high
+                        )
+                    )
+                }
+                catch let error as RError {
+                    Log.warning(
+                            "Failed to load special features: \(LibraryErrors.specialFeaturesFailed(error, media.title).rDescription())"
+                        )
+                }
+                catch {
+                    Log.warning(
+                        "Failed to generate correct error for failed special features load: " +
+                        LibraryErrors.specialFeaturesFailed(nil, media.title).rDescription()
+                    )
+                }
+            case .loading, .loaded: break
+            }
         }
     }
 

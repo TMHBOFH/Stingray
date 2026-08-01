@@ -102,11 +102,11 @@ public struct DashboardView: View {
         }
         .navigationDestination(for: AnyMedia.self) { anyMedia in
             switch anyMedia.media.mediaType {
-            case .tv(let seasons):
+            case .tv(let seasonsAvailable):
                 TVShowDetailView(
                     media: anyMedia.media,
                     streamingService: self.streamingService,
-                    seasons: seasons,
+                    seasons: seasonsAvailable,
                     navigation: $navigationPath
                 )
             case .movies(let movies):

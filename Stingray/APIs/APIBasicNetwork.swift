@@ -16,13 +16,15 @@ public protocol BasicNetworkProtocol {
     ///   - headers: Headers to add to request
     ///   - urlParams: URL paramaters for data fields
     ///   - body: For sending more advanced data structures like JSON
+    ///   - priority: Which connection pool the request runs on. `.high` "skips the line".
     /// - Returns: A formatted response in a Decodable type
     func request<T: Decodable>(
         verb: NetworkRequestType,
         path: String,
         headers: [String : String]?,
         urlParams: [URLQueryItem]?,
-        body: (any Encodable)?
+        body: (any Encodable)?,
+        priority: RequestPriority
     ) async throws(NetworkError) -> T
 
     /// Allows simple URL building using the URL type.
@@ -38,6 +40,22 @@ public protocol BasicNetworkProtocol {
     func buildAuthHeader(accessToken: String?) -> String
 }
 
+/// Extend to support existing network requests that don't specify a priority. This is put in an extension so that all
+/// `BasicNetworkProtocol`s get the benefit
+public extension BasicNetworkProtocol {
+    /// Convenience wrapper around the priority request function that uses the `.standard` priority. Keeps existing callers working by
+    /// skipping the `priority` param.
+    func request<T: Decodable>(
+        verb: NetworkRequestType,
+        path: String,
+        headers: [String : String]? = nil,
+        urlParams: [URLQueryItem]? = nil,
+        body: (any Encodable)? = nil
+    ) async throws(NetworkError) -> T {
+        try await request(verb: verb, path: path, headers: headers, urlParams: urlParams, body: body, priority: .standard)
+    }
+}
+
 /// Basic descriptor for REST API verbs
 public enum NetworkRequestType: String {
     /// Corresponds to the GET REST API verb
@@ -50,8 +68,25 @@ public enum NetworkRequestType: String {
     case delete = "DELETE"
 }
 
+/// How important a request is
+public enum RequestPriority {
+    /// Typical traffic, should be used most often
+    case standard
+    /// Latency-sensitive "skip the line" requests on an isolated connection pool
+    case high
+}
+
 /// A Jellyfin specific basic network struct for making network requests
 public final class JellyfinBasicNetwork: BasicNetworkProtocol {
+    /// Shared session for normal, high-volume traffic. Supports 6 concurrent requests, queues the rest
+    private static let standardSession: URLSession = .shared
+    /// Dedicated "skip-the-line" priority session. Supports 6 concurrent requests, queues the rest
+    private static let prioritySession: URLSession = {
+        let configuration = URLSessionConfiguration.default
+        configuration.httpMaximumConnectionsPerHost = 6
+        return URLSession(configuration: configuration)
+    }()
+
     /// Address of the Jellyfin server
     public var address: URL
     /// Unique identifier based on the device
@@ -85,7 +120,8 @@ public final class JellyfinBasicNetwork: BasicNetworkProtocol {
         path: String,
         headers: [String : String]? = nil,
         urlParams: [URLQueryItem]? = nil,
-        body: (any Encodable)? = nil
+        body: (any Encodable)? = nil,
+        priority: RequestPriority
     ) async throws(NetworkError) -> T {
         // Setup URL with path
         guard let url = self.buildURL(path: path, urlParams: urlParams) else {
@@ -123,7 +159,11 @@ public final class JellyfinBasicNetwork: BasicNetworkProtocol {
         let responseData: Data
         let response: URLResponse
         do {
-            (responseData, response) = try await URLSession.shared.data(for: request)
+            let session = switch priority {
+            case .standard: Self.standardSession
+            case .high: Self.prioritySession
+            }
+            (responseData, response) = try await session.data(for: request)
         }
         catch { throw NetworkError.requestFailedToSend(error) }
 

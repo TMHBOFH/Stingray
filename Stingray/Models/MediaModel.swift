@@ -29,6 +29,8 @@ public protocol MediaProtocol: Identifiable, MediaRepresentableProtocol, Hashabl
     
     /// Load special features for this media
     func loadSpecialFeatures(specialFeatures: [SpecialFeature])
+    /// Load season data
+    func loadSeasons(_ newState: TVSeasonsAvailable)
 }
 
 /// Media contains at least one media source, like different versions of the same movie. Each version of the movie needs their own video,
@@ -259,7 +261,29 @@ public final class MediaModel: MediaProtocol, Decodable {
         
         self.specialFeatures = .loaded(groupedFeatures)
     }
-    
+
+    public func loadSeasons(_ newState: TVSeasonsAvailable) {
+        // Save the episodes
+        self.mediaType = .tv(newState)
+
+        switch newState {
+        case .unloaded, .loading: return
+        case .loaded(let newSeasons):
+            // Save all the people
+            var people: [any MediaPersonProtocol] = self.people
+            // We don't use IDs here because people across a series can have different IDs. This prevents duplicates
+            var seenIDs: Set<String> = Set(self.people.map { $0.name + $0.role })
+            for season in newSeasons {
+                for episode in season.episodes {
+                    for person in episode.people where seenIDs.insert(person.name + person.role).inserted {
+                        people.append(person)
+                    }
+                }
+            }
+            self.people = people
+        }
+    }
+
     // Hashable conformance
     public static func == (lhs: MediaModel, rhs: MediaModel) -> Bool {
         lhs.id == rhs.id
@@ -557,12 +581,22 @@ public enum StreamType: String, Decodable, Equatable {
     case unknown
 }
 
+/// Track the loading status of TV Seasons
+public enum TVSeasonsAvailable {
+    /// Season downloads have yet to start
+    case unloaded
+    /// Seasons downloads have started for this media
+    case loading
+    /// Season downloading is complete
+    case loaded([any TVSeasonProtocol])
+}
+
 /// Denotes the type of media a `MediaModel` is.
 public enum MediaType: Decodable {
     /// Movies type with the associated media sources.
     case movies([any MediaSourceProtocol])
     /// TV type with the associated seasons. Nil indicates that media has not yet been loaded
-    case tv([any TVSeasonProtocol]?)
+    case tv(TVSeasonsAvailable)
     /// The type failed to load media
     case error(RError)
 
@@ -597,7 +631,7 @@ public enum MediaType: Decodable {
 
         switch stringValue {
         case "Movie": self = .movies([])
-        case "Series": self = .tv([])
+        case "Series": self = .tv(.unloaded)
         default: self = .error(JSONError.unexpectedKey(MediaError.unknownMediaType(stringValue)))
         }
     }

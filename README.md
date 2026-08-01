@@ -76,6 +76,7 @@ Configure Stingray to look and feel how you want it.
   - Slightly darken the background of the Notes App theme to improve the legibility of buttons
   - Add a missing "No image available" placeholder for people with no images
   - Add marquee-style text for people's names and roles
+  - Add a proper loading indicator to the TV show play button
 - User Management
   - If Stingray fails to login, provide options to retry and update the user's login
 - Cleanups
@@ -99,6 +100,7 @@ Configure Stingray to look and feel how you want it.
   - Remove practically unused `completed` and `unloaded` statuses for individual libraries
   - Remove the redundant `waiting` status for streaming service libraries status
   - Remove the poorly used library media type
+  - Add season sync status with `
 - Bug Fixes
   - Specify do not sleep while playing video
   - Allow moving from media metadata to play button
@@ -128,6 +130,8 @@ Configure Stingray to look and feel how you want it.
       - Improved thread control
       - Allow seasons to continue downloading during and after all shows load
   - Reduce hitching during video playback by moving playback updates off the UI thread
+  - Add priority Jellyfin syncing
+    - If a show is not fully synched when opened, request that show's special features and episodes separately from all the others
 
 ### Media Picker
 

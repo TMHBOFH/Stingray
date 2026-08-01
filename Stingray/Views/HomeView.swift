@@ -176,7 +176,7 @@ public struct MediaDetailLoader: View {
             case .tv(let seasons): TVShowDetailView(
                 media: foundMedia,
                 streamingService: self.streamingService,
-                seasons: seasons ?? [],
+                seasons: seasons,
                 navigation: $navigation
             )
             case .movies(let movies): MovieDetailView(
