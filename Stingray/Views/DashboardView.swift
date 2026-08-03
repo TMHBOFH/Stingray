@@ -30,33 +30,34 @@ public struct DashboardView: View {
                     Spacer()
                     ProfilePickerView(loginState: $loggedIn)
                         .padding(.vertical)
-                    HStack(alignment: .center) {
+                    VStack(alignment: .center) {
                         ErrorView(error: err, summary: "The server formatted the library's metadata unexpectedly.")
-                        NavigationLink { AddServerView(loginState: $loggedIn) }
-                        label: { Text("Update Login...") }
-                        if let activeUser = userModel.activeUser {
-                            Button {
-                                switch activeUser.serviceType {
-                                case .Jellyfin(let userJellyfin):
-                                    self.loggedIn = .loggedIn(
-                                        JellyfinModel(
-                                            userDisplayName: activeUser.displayName,
-                                            userID: activeUser.id,
-                                            serviceID: activeUser.serviceID,
-                                            accessToken: userJellyfin.accessToken,
-                                            sessionID: userJellyfin.sessionID,
-                                            serviceURL: activeUser.serviceURL
+                        HStack(alignment: .center) {
+                            NavigationLink { AddServerView(loginState: $loggedIn) }
+                            label: { Text("Update Login...") }
+                            if let activeUser = userModel.activeUser {
+                                Button {
+                                    switch activeUser.serviceType {
+                                    case .Jellyfin(let userJellyfin):
+                                        self.loggedIn = .loggedIn(
+                                            JellyfinModel(
+                                                userDisplayName: activeUser.displayName,
+                                                userID: activeUser.id,
+                                                serviceID: activeUser.serviceID,
+                                                accessToken: userJellyfin.accessToken,
+                                                sessionID: userJellyfin.sessionID,
+                                                serviceURL: activeUser.serviceURL
+                                            )
                                         )
-                                    )
+                                    }
                                 }
+                                label: { Text("Retry") }
                             }
-                            label: { Text("Retry") }
                         }
                     }
                     .padding(.vertical)
-
-                    SystemInfoView(streamingService: self.streamingService)
                     Spacer()
+                    SystemInfoView(streamingService: self.streamingService)
                 }
             case .available(let libraries), .complete(let libraries):
                 TabView(selection: $selectedTab) {
