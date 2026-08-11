@@ -14,7 +14,7 @@ public struct PeopleBrowserView: View {
 
     @Environment(ThemeModel.self) private var theme
 
-    @FocusState private var focusedActor: String?
+    @FocusState private var focusedActor: Int?
 
     /// Displays a list of people's photos, names, and roles
     /// - Parameters:
@@ -28,7 +28,7 @@ public struct PeopleBrowserView: View {
     public var body: some View {
         ScrollView(.horizontal) {
             LazyHStack {
-                ForEach(self.people, id: \.nameRoleID) { person in
+                ForEach(Array(self.people.enumerated()), id: \.offset) { offset, person in
                     Button { /* Temp Focus Workaround */ } label: {
                         VStack(spacing: 0) {
                             if let blurHash = person.imageHashes?.primary {
@@ -56,15 +56,15 @@ public struct PeopleBrowserView: View {
                                 .frame(width: 350, height: 600)
                                 .clipShape(RoundedRectangle(cornerRadius: 16))
                             }
-                            MarqueeText(text: person.name, animate: self.focusedActor == person.id, font: .headline)
+                            MarqueeText(text: person.name, animate: self.focusedActor == offset, font: .headline)
                                 .foregroundStyle(
-                                    self.focusedActor == person.id ? AnyShapeStyle(.black) : self.theme.currentTheme.header2
+                                    self.focusedActor == offset ? AnyShapeStyle(.black) : self.theme.currentTheme.header2
                                 )
-                            MarqueeText(text: person.role, animate: self.focusedActor == person.id, font: .caption)
+                            MarqueeText(text: person.role, animate: self.focusedActor == offset, font: .caption)
                         }
                     }
                     .buttonStyle(.plain)
-                    .focused($focusedActor, equals: person.id)
+                    .focused($focusedActor, equals: offset)
                     .frame(width: 350)
                 }
             }
