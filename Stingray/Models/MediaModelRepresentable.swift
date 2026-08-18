@@ -80,12 +80,6 @@ public protocol MediaPersonProtocol {
     var imageHashes: MediaImageBlurHashes? { get }
 }
 
-/// A simple ID based on attributes of this person, since the same person can have multiple roles in a show
-extension MediaPersonProtocol {
-    /// A simple ID based on attributes of this person, since the same person can have multiple roles in a show
-    public var nameRoleID: String { self.name + self.role + self.id }
-}
-
 /// The slimmest possible MediaModel for faster loading.
 @Observable
 public final class MediaModelRepresentable: MediaRepresentableProtocol, Decodable {
