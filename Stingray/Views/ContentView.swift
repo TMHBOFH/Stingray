@@ -13,8 +13,11 @@ public enum LoginState {
     /// All users are logged out
     case loggedOut
     /// There is at least one user signed in
-    case loggedIn(SystemInfoProviding & LibraryProviding & PlayerProviding & UserProviding & MediaImageProviding & MediaProviding &
-                  RecommendationProviding)
+    case loggedIn(
+        SystemInfoProviding & LibraryProviding & PlayerProviding & UserProviding & MediaImageProviding & MediaProviding &
+        RecommendationProviding,
+        UserProtocol
+    )
     /// There are accounts signed in, but the current user needs to be picked
     case pickingUser
     /// User is signed in, but requires a PIN
@@ -52,32 +55,34 @@ public struct ContentView: View {
         self.theme = themeModel
         let purchases = PurchasesModel()
         self.purchases = purchases
-        self.settings = SettingsModel(userModel: userModel, storage: settingStorage, theme: themeModel)
+        self.settings = SettingsModel(user: userModel.activeUser, storage: settingStorage, theme: themeModel)
     }
 
     public var body: some View {
         NavigationStack(path: $navigationPath) {
             switch loginState {
             case .loggedOut:
-                AddServerView(loginState: $loginState)
+                AddServerView(loginState: $loginState, userModel: self.userModel)
             case .pickingUser:
                 VStack {
                     Text("Welcome back to Jellyfin")
                         .font(.title.bold())
                     Spacer()
-                    ProfilePickerView(loginState: $loginState)
+                    ProfilePickerView(loginState: $loginState, userModel: self.userModel)
                     Spacer()
                 }
                 .padding(128)
             case .requiresPIN(let user):
-                PINEntry(loginState: $loginState, user: user)
+                PINEntry(userModel: self.userModel, loginState: $loginState, user: user)
 
-            case .loggedIn(let streamingService):
+            case .loggedIn(let streamingService, let user):
                 DashboardView(
                     streamingService: streamingService,
                     navigationPath: $navigationPath,
                     deepLinkRequest: $deepLinkRequest,
-                    loggedIn: $loginState
+                    loggedIn: $loginState,
+                    user: user,
+                    userModel: self.userModel
                 )
                 .onOpenURL { handleDeepLink(url: $0) }
             }
@@ -85,7 +90,7 @@ public struct ContentView: View {
         .onChange(of: self.scenePhase) { _, newPhase in
             if newPhase != .active { return } // Did we become active
             if self.settings.profileSwitchingMethod != .askOnResume || self.userModel.getUsers().count <= 1 { return }  // Should we ask
-            if case .loggedIn(let streamingService) = self.loginState, streamingService.playerProgress != nil { // Streaming something
+            if case .loggedIn(let streamingService, _) = self.loginState, streamingService.playerProgress != nil { // Streaming something
                 return
             }
             Log.info("Scene Phase caused profile picker")
@@ -97,7 +102,6 @@ public struct ContentView: View {
         .ignoresSafeArea()
         .environment(self.theme)
         .environment(self.settings)
-        .environment(self.userModel)
         .environment(self.purchases)
         .environment(\.locale, self.settings.langauge ?? self.locale)
         .onChange(of: self.colorScheme, initial: true) { self.settings.systemTheme = $1 }
@@ -150,7 +154,7 @@ public struct ContentView: View {
                         accessToken: userJellyfin.accessToken,
                         sessionID: userJellyfin.sessionID,
                         serviceURL: defaultUser.serviceURL
-                    )
+                    ), defaultUser
                 )
             }
         }

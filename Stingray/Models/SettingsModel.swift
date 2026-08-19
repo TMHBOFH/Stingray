@@ -11,7 +11,7 @@ import SwiftUI
 @Observable
 public final class SettingsModel {
     /// Storage location for user details
-    private let userModel: UserModel
+    private var user: UserProtocol?
     /// Storage location for the user's theme
     private let theme: ThemeModel
     /// All user setable bitrate options
@@ -72,69 +72,64 @@ public final class SettingsModel {
             }
         }
     }
+    
+    /// Switches the currently loaded settings to the new user
+    /// - Parameter user: User to load settings from
+    public func switchUser(to user: UserProtocol) { self.user = user }
 
     /// Storage device to permanently store user data
     @ObservationIgnored public var storage: SettingsStorageProtocol
 
     /// Describes how and when the current user will be switched. Updating this value updates permanent storage.
     public var profileSwitchingMethod: ProfileSwitching {
-        willSet(newValue) {
-            self.storage.setProfileSwitchingMethod(to: newValue)
-            if self.profileSwitchingMethod == .manual {
-                guard let newUser = self.userModel.activeUser
-                else { return }
-                self.userModel.activeUser = newUser
-            }
-        }
+        willSet(newValue) { self.storage.setProfileSwitchingMethod(to: newValue) }
     }
 
     /// Video bitrate option
     public var bitrate: Int? {
-        willSet(newValue) {
-            self.storage.setBitrateCap(newValue)
-        }
+        willSet(newValue) { self.storage.setBitrateCap(newValue) }
     }
 
     /// Track if the user uses subtitles
     public var usesSubtitles: Bool {
-        get { self.userModel.activeUser?.usesSubtitles ?? false }
-        set(newValue) { self.userModel.activeUser?.usesSubtitles = newValue }
+        get { self.user?.usesSubtitles ?? false }
+        set(newValue) { self.user?.usesSubtitles = newValue }
     }
 
     /// Should the next piece of content load (if available)
     public var autoplay: Bool {
-        get { self.userModel.activeUser?.autoplay ?? false }
-        set(newValue) { self.userModel.activeUser?.autoplay = newValue }
+        get { self.user?.autoplay ?? false }
+        set(newValue) { self.user?.autoplay = newValue }
     }
 
     /// How fast the player plays content
     public var playbackSpeed: PlaybackSpeed {
-        get { self.userModel.activeUser?.playbackSpeed ?? .one }
-        set(newValue) { self.userModel.activeUser?.playbackSpeed = newValue }
+        get { self.user?.playbackSpeed ?? .one }
+        set(newValue) { self.user?.playbackSpeed = newValue }
     }
 
     /// Allow searching to look at episode titles to surface relevant results
     public var searchEpisodeTitles: Bool {
-        get { self.userModel.activeUser?.searchEpisodeTitles ?? false }
-        set(newValue) { self.userModel.activeUser?.searchEpisodeTitles = newValue }
+        get { self.user?.searchEpisodeTitles ?? false }
+        set(newValue) { self.user?.searchEpisodeTitles = newValue }
     }
 
     /// Display filters options in library views
     public var showFilters: Bool {
-        get { self.userModel.activeUser?.showFilters ?? true }
-        set(newValue) { self.userModel.activeUser?.showFilters = newValue }
+        get { self.user?.showFilters ?? true }
+        set(newValue) { self.user?.showFilters = newValue }
     }
 
     /// Display sorting options in library views
     public var showSorting: Bool {
-        get { self.userModel.activeUser?.showSorting ?? true }
-        set(newValue) { self.userModel.activeUser?.showSorting = newValue }
+        get { self.user?.showSorting ?? true }
+        set(newValue) { self.user?.showSorting = newValue }
     }
 
     /// A short password required to show the users's content
     public var pin: String? {
-        get { self.userModel.activeUser?.pin }
-        set(newValue) { self.userModel.activeUser?.pin = newValue }
+        get { self.user?.pin }
+        set(newValue) { self.user?.pin = newValue }
     }
 
     /// The desired dark theme for the user
@@ -142,7 +137,7 @@ public final class SettingsModel {
         get { self.theme.dark }
         set(newValue) {
             self.theme.dark = newValue
-            self.userModel.activeUser?.darkTheme = newValue
+            self.user?.darkTheme = newValue
         }
     }
 
@@ -151,7 +146,7 @@ public final class SettingsModel {
         get { self.theme.light }
         set(newValue) {
             self.theme.light = newValue
-            self.userModel.activeUser?.lightTheme = newValue
+            self.user?.lightTheme = newValue
         }
     }
 
@@ -163,36 +158,36 @@ public final class SettingsModel {
 
     /// Should the poster art be displayed
     public var loadThumbnailArt: Bool {
-        get { self.userModel.activeUser?.loadThumbnailArt ?? true }
-        set(newValue) { self.userModel.activeUser?.loadThumbnailArt = newValue }
+        get { self.user?.loadThumbnailArt ?? true }
+        set(newValue) { self.user?.loadThumbnailArt = newValue }
     }
 
     /// Should the detail media view load background art
     public var loadMediaBackgroundArt: Bool {
-        get { self.userModel.activeUser?.loadMediaBackgroundArt ?? true }
-        set(newValue) { self.userModel.activeUser?.loadMediaBackgroundArt = newValue }
+        get { self.user?.loadMediaBackgroundArt ?? true }
+        set(newValue) { self.user?.loadMediaBackgroundArt = newValue }
     }
 
     /// Allows replacing media logos with text
     public var replaceLogosWithText: Bool {
-        get { self.userModel.activeUser?.replaceLogosWithText ?? false }
-        set(newValue) { self.userModel.activeUser?.replaceLogosWithText = newValue }
+        get { self.user?.replaceLogosWithText ?? false }
+        set(newValue) { self.user?.replaceLogosWithText = newValue }
     }
     
     /// The language the user wants Stingray to render with
     public var langauge: Locale? {
-        get { self.userModel.activeUser?.preferredLangauge }
-        set(newValue) { self.userModel.activeUser?.preferredLangauge = newValue }
+        get { self.user?.preferredLangauge }
+        set(newValue) { self.user?.preferredLangauge = newValue }
     }
 
     /// Create a SettingsModel from some kind of storage
     /// - Parameters:
-    ///   - userModel: Storage location of users
+    ///   - user: User settings to read and write from
     ///   - storage: Settings storage location
     ///   - theme: Theme storage location
-    public init(userModel: UserModel, storage: SettingsStorageProtocol, theme: ThemeModel) {
+    public init(user: UserProtocol?, storage: SettingsStorageProtocol, theme: ThemeModel) {
         self.storage = storage
-        self.userModel = userModel
+        self.user = user
         self.profileSwitchingMethod = storage.getProfileSwitchingMethod()
         self.bitrate = storage.getBitrateCap()
         self.theme = theme

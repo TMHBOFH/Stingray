@@ -15,7 +15,8 @@ public struct DashboardView: View {
     @Binding public var deepLinkRequest: DeepLinkRequest?
     @Binding public var loggedIn: LoginState
 
-    @Environment(UserModel.self) public var userModel: UserModel
+    public let user: UserProtocol
+    public let userModel: UserModelProtocol
     @Environment(SettingsModel.self) public var settings: SettingsModel
 
     public var body: some View {
@@ -28,31 +29,29 @@ public struct DashboardView: View {
                         .font(.title)
                         .bold()
                     Spacer()
-                    ProfilePickerView(loginState: $loggedIn)
+                    ProfilePickerView(loginState: $loggedIn, userModel: self.userModel)
                         .padding(.vertical)
                     VStack(alignment: .center) {
                         ErrorView(error: err, summary: "The server formatted the library's metadata unexpectedly.")
                         HStack(alignment: .center) {
-                            NavigationLink { AddServerView(loginState: $loggedIn) }
+                            NavigationLink { AddServerView(loginState: $loggedIn, userModel: self.userModel) }
                             label: { Text("Update Login...") }
-                            if let activeUser = userModel.activeUser {
-                                Button {
-                                    switch activeUser.serviceType {
-                                    case .Jellyfin(let userJellyfin):
-                                        self.loggedIn = .loggedIn(
-                                            JellyfinModel(
-                                                userDisplayName: activeUser.displayName,
-                                                userID: activeUser.id,
-                                                serviceID: activeUser.serviceID,
-                                                accessToken: userJellyfin.accessToken,
-                                                sessionID: userJellyfin.sessionID,
-                                                serviceURL: activeUser.serviceURL
-                                            )
-                                        )
-                                    }
+                            Button {
+                                switch self.user.serviceType {
+                                case .Jellyfin(let userJellyfin):
+                                    self.loggedIn = .loggedIn(
+                                        JellyfinModel(
+                                            userDisplayName: self.user.displayName,
+                                            userID: self.user.id,
+                                            serviceID: self.user.serviceID,
+                                            accessToken: userJellyfin.accessToken,
+                                            sessionID: userJellyfin.sessionID,
+                                            serviceURL: self.user.serviceURL
+                                        ), self.user
+                                    )
                                 }
-                                label: { Text("Retry") }
                             }
+                                label: { Text("Retry") }
                         }
                     }
                     .padding(.vertical)
@@ -62,10 +61,14 @@ public struct DashboardView: View {
             case .available(let libraries), .complete(let libraries):
                 TabView(selection: $selectedTab) {
                     Tab(value: "users") {
-                        SettingsView(loginState: $loggedIn, streamingService: self.streamingService)
-                    } label: {
-                        Text(self.streamingService.usersName)
+                        SettingsView(
+                            loginState: $loggedIn,
+                            userModel: self.userModel,
+                            user: self.user,
+                            streamingService: self.streamingService
+                        )
                     }
+                    label: { Text(self.streamingService.usersName) }
 
                     Tab(value: "search") { SearchView(streamingService: self.streamingService, navigation: $navigationPath) }
                     label: { Text("Search") }

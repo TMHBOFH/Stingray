@@ -259,9 +259,9 @@ public final class JellyfinModel: SystemInfoProviding, LibraryProviding, PlayerP
         url: URL,
         username: String,
         password: String,
-        userModel: UserModel,
+        userModel: UserModelProtocol,
         settingsModel: SettingsModel
-    ) async throws(AccountErrors) -> JellyfinModel {
+    ) async throws(AccountErrors) -> (JellyfinModel, User) {
         let networkAPI = JellyfinAdvancedNetwork(network: JellyfinBasicNetwork(address: url))
         let response: APILoginResponse
 
@@ -279,9 +279,9 @@ public final class JellyfinModel: SystemInfoProviding, LibraryProviding, PlayerP
     public static func login(
         url: URL,
         quickConnectSecret: String,
-        userModel: UserModel,
+        userModel: UserModelProtocol,
         settingsModel: SettingsModel
-    ) async throws(QuickConnectErrors) -> JellyfinModel {
+    ) async throws(QuickConnectErrors) -> (JellyfinModel, User) {
         let networkAPI = JellyfinAdvancedNetwork(network: JellyfinBasicNetwork(address: url))
         let response: APILoginResponse
 
@@ -299,16 +299,18 @@ public final class JellyfinModel: SystemInfoProviding, LibraryProviding, PlayerP
     ///   - url: Location of the server
     /// - Returns: Setup login instance
     private static func baseLogin(
-        userModel: UserModel,
+        userModel: UserModelProtocol,
         settingsModel: SettingsModel,
         response: APILoginResponse,
         url: URL
-    ) -> JellyfinModel {
+    ) -> (JellyfinModel, User) {
+        let workingUser: User
         if var existingUser = userModel.getUser(id: response.userId) { // User already exists, just update access
             existingUser.serviceType = .Jellyfin(UserJellyfin(accessToken: response.accessToken, sessionID: response.sessionId))
             existingUser.serviceURL = url
             existingUser.serviceID = response.serverId
             userModel.addUser(existingUser)
+            workingUser = existingUser
         }
         else { // User doesn't exist, setup from scratch
             let newUser = User(
@@ -326,8 +328,9 @@ public final class JellyfinModel: SystemInfoProviding, LibraryProviding, PlayerP
             // Sync the theme cache to the newly active user so we don't keep showing the previous user's theme
             settingsModel.themeDark = newUser.darkTheme
             settingsModel.themeLight = newUser.lightTheme
+            workingUser = newUser
         }
-        return JellyfinModel(response: response, serviceURL: url)
+        return (JellyfinModel(response: response, serviceURL: url), workingUser)
     }
 
     public func logout() async {

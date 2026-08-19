@@ -13,7 +13,7 @@ public struct PINSetup: View {
     @State private var contentIsFilled: Bool = false // Both the desired and confirmation fields have data
     @State private var error: String = ""
 
-    @Environment(UserModel.self) private var userModel: UserModel
+    @State public var user: UserProtocol
     @Environment(\.dismiss) private var dismiss
 
     public var body: some View {
@@ -36,7 +36,7 @@ public struct PINSetup: View {
                 .frame(width: 400)
             Spacer()
             Button("Save PIN") {
-                self.userModel.activeUser?.pin = self.desiredPIN
+                self.user.pin = self.desiredPIN
                 self.dismiss()
             }
             .disabled(!self.contentIsFilled || !self.error.isEmpty)
@@ -56,7 +56,7 @@ public struct PINSetup: View {
 
 public struct PINEntry: View {
     @Environment(\.dismiss) private var dismiss
-    @Environment(UserModel.self) private var userModel: UserModel
+    public let userModel: UserModelProtocol
     @Environment(SettingsModel.self) private var settings
 
     /// Not read, only set to successfully login or switch users
@@ -79,7 +79,7 @@ public struct PINEntry: View {
             Spacer()
             HStack {
                 Button("Submit") {
-                    if self.userModel.activeUser?.pin != self.pinEntry {
+                    if self.user.pin != self.pinEntry {
                         self.error = "Invalid PIN"
                         return
                     }
@@ -102,7 +102,7 @@ public struct PINEntry: View {
 
 public struct PINDelete: View {
     @Environment(\.dismiss) private var dismiss
-    @Environment(UserModel.self) private var userModel: UserModel
+    @State public var user: UserProtocol
     /// PIN attempt
     @State private var pinEntry: String = ""
     /// Reason to not allow sign-in
@@ -110,7 +110,7 @@ public struct PINDelete: View {
 
     public var body: some View {
         VStack {
-            Text("Delete PIN for \(self.userModel.activeUser?.displayName ?? "Nobody")")
+            Text("Delete PIN for \(self.user.displayName)")
                 .font(.title)
                 .fontWeight(.bold)
             Spacer()
@@ -120,11 +120,11 @@ public struct PINDelete: View {
             HStack {
                 Menu("Delete PIN") {
                     Button("You absolutely want to delete the PIN?", role: .destructive) {
-                        if self.userModel.activeUser?.pin != self.pinEntry {
+                        if self.user.pin != self.pinEntry {
                             self.error = "Invalid PIN"
                             return
                         }
-                        self.userModel.activeUser?.pin = nil
+                        self.user.pin = nil
                         self.dismiss()
                     }
                     .disabled(pinEntry.isEmpty)

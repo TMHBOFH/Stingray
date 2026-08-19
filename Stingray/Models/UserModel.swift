@@ -8,7 +8,7 @@
 import Foundation
 
 /// Modifies and stores multiple users' data
-public protocol UserModelProtocol {
+public protocol UserModelProtocol: AnyObject {
     /// The signed in user
     var activeUser: (any UserProtocol)? { get set }
     /// Array of user IDs that SwiftUI will observe for changes

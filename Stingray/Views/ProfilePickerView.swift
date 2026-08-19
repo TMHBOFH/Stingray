@@ -13,7 +13,7 @@ public struct ProfilePickerView: View {
     /// Login state for the entire app
     @Binding public var loginState: LoginState
 
-    @Environment(UserModel.self) private var userModel
+    public let userModel: UserModelProtocol
 
     public static let optionSize: CGSize = CGSize(width: 274, height: 335)
     public static let spacing: CGSize = CGSize(width: 60, height: 45)
@@ -40,10 +40,10 @@ public struct ProfilePickerView: View {
                     ForEach(itemRow) { item in
                         switch item {
                         case .user(let user):
-                            ProfilePickerUser(loginState: $loginState, user: user)
+                            ProfilePickerUser(userModel: self.userModel, loginState: $loginState, user: user)
                                 .frame(width: Self.optionSize.width, height: Self.optionSize.height)
                         case .addProfile:
-                            AddProfile(loginState: $loginState)
+                            AddProfile(loginState: $loginState, userModel: self.userModel)
                                 .frame(width: Self.optionSize.width, height: Self.optionSize.height)
                         }
                     }
@@ -75,7 +75,7 @@ public struct ProfilePickerView: View {
     /// - Returns: Updated `LoginState`
     public static func switchUser(
         user: any UserProtocol,
-        userModel: UserModel,
+        userModel: UserModelProtocol,
         currentLoginState: LoginState,
         settingsModel: SettingsModel
     ) -> LoginState {
@@ -84,14 +84,14 @@ public struct ProfilePickerView: View {
         settingsModel.themeLight = user.lightTheme
 
         // If we're already logged in as this user, reuse the existing streaming service instance
-        if case .loggedIn(let existingService) = currentLoginState {
+        if case .loggedIn(let existingService, _) = currentLoginState {
             if existingService.userID == user.id { return currentLoginState } // Return the same state to avoid recreating the service
             else if user.pin != nil { return .requiresPIN(user) } // May require a PIN when switching users
         }
-        if case .pickingUser = currentLoginState {
-            if user.pin != nil { return .requiresPIN(user) } // May require a PIN when switching users
+        if case .pickingUser = currentLoginState, user.pin != nil {
+            return .requiresPIN(user) // May require a PIN when switching users
         }
-
+        settingsModel.switchUser(to: user)
         // Otherwise, create a new streaming service instance
         switch user.serviceType {
         case .Jellyfin(let jellyfinData):
@@ -103,7 +103,7 @@ public struct ProfilePickerView: View {
                     accessToken: jellyfinData.accessToken,
                     sessionID: jellyfinData.sessionID,
                     serviceURL: user.serviceURL
-                )
+                ), user
             )
         }
     }
@@ -116,8 +116,10 @@ fileprivate struct AddProfile: View {
     /// Checks if add user button is selected
     @FocusState private var isFocused: Bool
 
+    let userModel: UserModelProtocol
+
     var body: some View {
-        NavigationLink { AddServerView(loginState: $loginState) }
+        NavigationLink { AddServerView(loginState: $loginState, userModel: self.userModel) }
         label: {
             VStack(alignment: .center) {
                 Image(systemName: "person.crop.circle.fill.badge.plus")
@@ -176,7 +178,7 @@ fileprivate struct ProfilePickerImage: View {
 
 fileprivate struct ProfilePickerUser: View {
     /// Functions and values regarding the users
-    @Environment(UserModel.self) private var userModel: UserModel
+    public let userModel: UserModelProtocol
     /// Current settings for the user
     @Environment(SettingsModel.self) private var settings
     /// Theme data for this user
@@ -215,7 +217,7 @@ fileprivate struct ProfilePickerUser: View {
             .padding(16)
             .background { // Only show white background if the current user is this user
                 switch self.loginState {
-                case .loggedIn(let streamingService):
+                case .loggedIn(let streamingService, _):
                     streamingService.userID == user.id ? self.theme.currentTheme.activeColor : .clear
                 default: Color.clear
                 }

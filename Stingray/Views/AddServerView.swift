@@ -25,11 +25,14 @@ public struct AddServerView: View {
     @State private var connected: Bool = false
     @State private var jellyfinURL: URL?
 
-    @Environment(UserModel.self) public var userModel: UserModel
+    public var userModel: UserModelProtocol
     @Environment(SettingsModel.self) public var settings: SettingsModel
     @Environment(\.dismiss) public var dismiss
 
-    public init(loginState: Binding<LoginState>) { self._loggedIn = loginState }
+    public init(loginState: Binding<LoginState>, userModel: UserModelProtocol) {
+        self._loggedIn = loginState
+        self.userModel = userModel
+    }
 
     public var body: some View {
         VStack {
@@ -238,24 +241,24 @@ public struct AddServerView: View {
                 }
                 // Login using Quick Connect
                 if let quickConnectSecret = quickConnectSecret {
-                    let streamingService = try await JellyfinModel.login(
+                    let result = try await JellyfinModel.login(
                         url: jellyfinURL,
                         quickConnectSecret: quickConnectSecret,
                         userModel: self.userModel,
                         settingsModel: self.settings
                     )
-                    self.loggedIn = .loggedIn(streamingService)
+                    self.loggedIn = .loggedIn(result.0, result.1)
                 }
                 // Login using normal credentials
                 else {
-                    let streamingService = try await JellyfinModel.login(
+                    let result = try await JellyfinModel.login(
                         url: jellyfinURL,
                         username: username,
                         password: password,
                         userModel: self.userModel,
                         settingsModel: self.settings
                     )
-                    self.loggedIn = .loggedIn(streamingService)
+                    self.loggedIn = .loggedIn(result.0, result.1)
                 }
             } catch let error as RError {
                 self.error = AccountErrors.loginFailed(error)
@@ -286,7 +289,7 @@ public struct AddServerView: View {
     }
 }
 
-#Preview {
-    @Previewable @State var loginState: LoginState = .loggedOut
-    AddServerView(loginState: $loginState)
-}
+// #Preview {
+//     @Previewable @State var loginState: LoginState = .loggedOut
+//     AddServerView(loginState: $loginState)
+// }

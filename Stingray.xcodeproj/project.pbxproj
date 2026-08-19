@@ -55,7 +55,6 @@
 			membershipExceptions = (
 				APIs/APIBasicNetwork.swift,
 				APIs/APIBasicStorage.swift,
-				APIs/APISettingsStorage.swift,
 				APIs/APIUserStorage.swift,
 				Extensions/DecoderExtension.swift,
 				Extensions/TimeIntervalExtension.swift,
@@ -65,7 +64,6 @@
 				Models/Purchases.storekit,
 				Models/PurchasesModel.swift,
 				Models/RErrorModel.swift,
-				Models/SettingsModel.swift,
 				Models/StreamingServiceBasicModel.swift,
 				Models/UserModel.swift,
 				Themes/ThemeModel.swift,

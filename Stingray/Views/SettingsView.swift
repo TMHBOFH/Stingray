@@ -17,7 +17,9 @@ public struct SettingsView: View {
     /// Controls when to show a dialog box for logging out
     @State private var showLogoutAlert: Bool = false
 
-    @Environment(UserModel.self) private var userModel: UserModel
+    public var userModel: UserModelProtocol
+
+    public let user: UserProtocol
 
     @Environment(PurchasesModel.self) private var purchases: PurchasesModel
     /// Controls the sheet to show the supporting Stingray screen
@@ -35,7 +37,7 @@ public struct SettingsView: View {
             // MARK: Profiles
             // Profile picker
             Section(header: Text(String(localized: "Account")).bold()) {
-                ProfilePickerView(loginState: $loginState)
+                ProfilePickerView(loginState: $loginState, userModel: self.userModel)
                     .focusSection()
                 // PIN button
                 DoubleButton(label: "PIN", sublabel: self.settings.pin == nil ? "Configure..." : "Configured") {
@@ -43,12 +45,12 @@ public struct SettingsView: View {
                 }
                 .fullScreenCover(isPresented: $showPinSetup) {
                     if self.settings.pin == nil {
-                        PINSetup()
+                        PINSetup(user: self.user)
                             .padding(64)
                             .stingrayBackground()
                             .ignoresSafeArea()
                     } else {
-                        PINDelete()
+                        PINDelete(user: self.user)
                             .padding(64)
                             .stingrayBackground()
                             .ignoresSafeArea()
@@ -56,7 +58,7 @@ public struct SettingsView: View {
                 }
                 DoubleButton(label: "Update Login...", sublabel: "") { self.showRefreshLogin = true }
                     .fullScreenCover(isPresented: $showRefreshLogin) {
-                        AddServerView(loginState: $loginState) // This view updates existing users access
+                        AddServerView(loginState: $loginState, userModel: self.userModel) // This view updates existing users access
                             .padding(64)
                             .stingrayBackground()
                             .ignoresSafeArea()
@@ -213,7 +215,7 @@ public struct SettingsView: View {
             // MARK: Connection info
             Section {
                 switch loginState {
-                case .loggedIn(let streamingService):
+                case .loggedIn(let streamingService, _):
                     VStack {
                         SystemInfoView(streamingService: streamingService)
                         LibrariesInfoView(streamingService: streamingService)
