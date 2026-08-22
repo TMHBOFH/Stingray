@@ -305,15 +305,14 @@ public final class JellyfinModel: SystemInfoProviding, LibraryProviding, PlayerP
         url: URL
     ) -> (JellyfinModel, User) {
         let workingUser: User
-        if var existingUser = userModel.getUser(id: response.userId) { // User already exists, just update access
+        if let existingUser = userModel.getUser(id: response.userId) { // User already exists, just update access
             existingUser.serviceType = .Jellyfin(UserJellyfin(accessToken: response.accessToken, sessionID: response.sessionId))
             existingUser.serviceURL = url
             existingUser.serviceID = response.serverId
-            userModel.addUser(existingUser)
             workingUser = existingUser
         }
         else { // User doesn't exist, setup from scratch
-            let newUser = User(
+            let newUser = userModel.createUser(
                 serviceURL: url,
                 serviceType: .Jellyfin(
                     UserJellyfin(accessToken: response.accessToken, sessionID: response.sessionId)
@@ -323,13 +322,14 @@ public final class JellyfinModel: SystemInfoProviding, LibraryProviding, PlayerP
                 displayName: response.userName
             )
 
-            userModel.addUser(newUser)
             userModel.activeUser = newUser
-            // Sync the theme cache to the newly active user so we don't keep showing the previous user's theme
-            settingsModel.themeDark = newUser.darkTheme
-            settingsModel.themeLight = newUser.lightTheme
             workingUser = newUser
         }
+        // Settings read and write through whichever user they're pointed at, so they have to follow the login
+        settingsModel.switchUser(to: workingUser)
+        // Sync the theme cache to the newly active user so we don't keep showing the previous user's theme
+        settingsModel.themeDark = workingUser.darkTheme
+        settingsModel.themeLight = workingUser.lightTheme
         return (JellyfinModel(response: response, serviceURL: url), workingUser)
     }
 

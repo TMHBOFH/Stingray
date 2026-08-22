@@ -13,7 +13,10 @@ public struct PINSetup: View {
     @State private var contentIsFilled: Bool = false // Both the desired and confirmation fields have data
     @State private var error: String = ""
 
-    @State public var user: UserProtocol
+    /// User the PIN is being created for
+    public let user: any UserProtocol
+    /// Written to so that the new PIN reaches permanent storage
+    @Environment(SettingsModel.self) private var settings
     @Environment(\.dismiss) private var dismiss
 
     public var body: some View {
@@ -36,7 +39,7 @@ public struct PINSetup: View {
                 .frame(width: 400)
             Spacer()
             Button("Save PIN") {
-                self.user.pin = self.desiredPIN
+                self.settings.pin = self.desiredPIN
                 self.dismiss()
             }
             .disabled(!self.contentIsFilled || !self.error.isEmpty)
@@ -102,7 +105,10 @@ public struct PINEntry: View {
 
 public struct PINDelete: View {
     @Environment(\.dismiss) private var dismiss
-    @State public var user: UserProtocol
+    /// User the PIN is being removed from
+    public let user: any UserProtocol
+    /// Written to so that removing the PIN reaches permanent storage
+    @Environment(SettingsModel.self) private var settings
     /// PIN attempt
     @State private var pinEntry: String = ""
     /// Reason to not allow sign-in
@@ -120,11 +126,11 @@ public struct PINDelete: View {
             HStack {
                 Menu("Delete PIN") {
                     Button("You absolutely want to delete the PIN?", role: .destructive) {
-                        if self.user.pin != self.pinEntry {
+                        if self.settings.pin != self.pinEntry {
                             self.error = "Invalid PIN"
                             return
                         }
-                        self.user.pin = nil
+                        self.settings.pin = nil
                         self.dismiss()
                     }
                     .disabled(pinEntry.isEmpty)

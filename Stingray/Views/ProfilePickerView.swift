@@ -80,8 +80,6 @@ public struct ProfilePickerView: View {
         settingsModel: SettingsModel
     ) -> LoginState {
         userModel.activeUser = user
-        settingsModel.themeDark = user.darkTheme
-        settingsModel.themeLight = user.lightTheme
 
         // If we're already logged in as this user, reuse the existing streaming service instance
         if case .loggedIn(let existingService, _) = currentLoginState {

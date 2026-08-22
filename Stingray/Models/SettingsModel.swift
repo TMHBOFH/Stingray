@@ -75,7 +75,11 @@ public final class SettingsModel {
     
     /// Switches the currently loaded settings to the new user
     /// - Parameter user: User to load settings from
-    public func switchUser(to user: UserProtocol) { self.user = user }
+    public func switchUser(to user: UserProtocol) {
+        self.user = user
+        self.themeDark = user.darkTheme
+        self.themeLight = user.lightTheme
+    }
 
     /// Storage device to permanently store user data
     @ObservationIgnored public var storage: SettingsStorageProtocol

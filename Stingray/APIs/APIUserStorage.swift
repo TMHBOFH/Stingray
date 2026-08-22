@@ -20,7 +20,7 @@ public protocol UserStorageProtocol {
     /// Set the current user to use on startup
     /// - Parameter id: The current user ID
     func setActiveUserID(id: String)
-    /// Save a `User` into storage
+    /// Save a `User` into storage, and attach the storage so the user saves its own later changes
     /// - Parameters:
     ///   - user: User to save
     func upsertUser(user: any UserProtocol)
@@ -55,11 +55,14 @@ public final class UserStorage: UserStorageProtocol {
     }
     
     public func upsertUser(user: any UserProtocol) {
+        user.attach(storage: self) // Any user that reaches storage keeps itself saved from here on
         self.basicStorage.setObject(.user(user.id), value: user)
     }
     
     public func getUser(userID: String) -> User? {
-        return self.basicStorage.getObject(.user(userID))
+        let user: User? = self.basicStorage.getObject(.user(userID))
+        user?.attach(storage: self)
+        return user
     }
     
     public func deleteUser(userID: String) {

@@ -13,10 +13,6 @@ public protocol UserModelProtocol: AnyObject {
     var activeUser: (any UserProtocol)? { get set }
     /// Array of user IDs that SwiftUI will observe for changes
     var userIDs: Set<String> { get }
-
-    /// Adds a user to storage based on a `User` type.
-    /// - Parameter user: User to add or update
-    func addUser(_ user: any UserProtocol)
     /// Gets all users
     /// - Returns: All available users
     func getUsers() -> [User]
@@ -27,10 +23,24 @@ public protocol UserModelProtocol: AnyObject {
     /// Deletes a user based on their ID
     /// - Parameter userID: ID of the user to delete
     func deleteUser(_ userID: String)
+
+    func createUser(
+        serviceURL: URL,
+        serviceType: ServiceType,
+        serviceID: String,
+        id: String,
+        displayName: String
+    ) -> User
 }
 
-/// Basic structure for a stored user
-public protocol UserProtocol: Codable {
+/// Basic structure for a stored user.
+/// Reference semantics are required so that every holder of a user (the login state, the settings, and the user model)
+/// observes the same settings rather than a private copy.
+public protocol UserProtocol: AnyObject, Codable {
+    /// Hands the user the storage it saves itself to whenever it changes. Pass `nil` to stop the user from saving.
+    /// - Parameter storage: Storage to write changes to
+    func attach(storage: UserStorageProtocol?)
+
     /// URL to the streaming service
     var serviceURL: URL { get }
     /// Type of streaming service
@@ -99,12 +109,6 @@ public final class UserModel: UserModelProtocol {
         self.activeUser = self.storage.getUser(userID: userID)
     }
 
-    public func addUser(_ user: any UserProtocol) {
-        self.storage.upsertUser(user: user)
-        self.userIDs.insert(user.id)
-        self.storage.setUserIDs(Array(self.userIDs))
-    }
-
     public func getUsers() -> [User] {
         return self.userIDs.compactMap { self.storage.getUser(userID: $0) }
     }
@@ -117,61 +121,131 @@ public final class UserModel: UserModelProtocol {
         userIDs.remove(userID)
         storage.setUserIDs(Array(userIDs))
         storage.deleteUser(userID: userID)
-        if userID == self.activeUser?.id { self.activeUser = nil }
+        if userID == self.activeUser?.id {
+            self.activeUser?.attach(storage: nil) // A deleted user must not save itself back into storage
+            self.activeUser = nil
+        }
+    }
+
+    public func createUser(
+        serviceURL: URL,
+        serviceType: ServiceType,
+        serviceID: String,
+        id: String,
+        displayName: String
+    ) -> User {
+        // Create the user
+        let user = User(
+            serviceURL: serviceURL,
+            serviceType: serviceType,
+            serviceID: serviceID,
+            id: id,
+            storage: self.storage,
+            displayName: displayName,
+            usesSubtitles: false,
+            pin: nil,
+            autoplay: false,
+            darkTheme: .deepSea,
+            lightTheme: .beach,
+            playbackSpeed: .one,
+            loadThumbnailArt: true,
+            loadMediaBackgroundArt: true,
+            replaceLogosWithText: false,
+            preferredLanguage: nil,
+            searchEpisodeTitles: false,
+            showFilters: true,
+            showSorting: true
+        )
+        // Store the user
+        self.storage.upsertUser(user: user)
+        self.userIDs.insert(user.id)
+        self.storage.setUserIDs(Array(self.userIDs))
+
+        return user
     }
 }
 
-/// Basic structure for a user
-public struct User: UserProtocol, Codable, Identifiable, Hashable {
-    public var serviceURL: URL
-    public var serviceType: ServiceType
-    public var serviceID: String
+/// Basic structure for a user.
+/// Once the user has passed through storage it saves itself on every change, so callers only ever set a property.
+@Observable
+public final class User: UserProtocol, Codable, Identifiable, Hashable {
+    /// Storage the user writes itself back to whenever it changes. Attached by `UserStorage`, so it is never encoded.
+    @ObservationIgnored private var storage: UserStorageProtocol?
+
+    public var serviceURL: URL { didSet { self.save() } }
+    public var serviceType: ServiceType { didSet { self.save() } }
+    public var serviceID: String { didSet { self.save() } }
     public let id: String
     public let displayName: String
 
     // Settings
-    public var usesSubtitles: Bool
-    public var pin: String?
-    public var autoplay: Bool
-    public var darkTheme: Themes
-    public var lightTheme: Themes
-    public var playbackSpeed: PlaybackSpeed
-    public var loadThumbnailArt: Bool
-    public var loadMediaBackgroundArt: Bool
-    public var replaceLogosWithText: Bool
-    public var preferredLangauge: Locale?
-    public var searchEpisodeTitles: Bool
-    public var showFilters: Bool
-    public var showSorting: Bool
+    public var usesSubtitles: Bool { didSet { self.save() } }
+    public var pin: String? { didSet { self.save() } }
+    public var autoplay: Bool { didSet { self.save() } }
+    public var darkTheme: Themes { didSet { self.save() } }
+    public var lightTheme: Themes { didSet { self.save() } }
+    public var playbackSpeed: PlaybackSpeed { didSet { self.save() } }
+    public var loadThumbnailArt: Bool { didSet { self.save() } }
+    public var loadMediaBackgroundArt: Bool { didSet { self.save() } }
+    public var replaceLogosWithText: Bool { didSet { self.save() } }
+    public var preferredLangauge: Locale? { didSet { self.save() } }
+    public var searchEpisodeTitles: Bool { didSet { self.save() } }
+    public var showFilters: Bool { didSet { self.save() } }
+    public var showSorting: Bool { didSet { self.save() } }
+
+    public func attach(storage: UserStorageProtocol?) { self.storage = storage }
+
+    /// Writes the user back to permanent storage. Called for every change, so no caller has to remember to save.
+    private func save() {
+        guard let storage = self.storage
+        else {
+            Log.warning("User \(self.id) changed before being attached to storage, so the change was not saved")
+            return
+        }
+        storage.upsertUser(user: self)
+    }
+
+    /// Declared explicitly so that only the user's data is encoded
+    private enum CodingKeys: String, CodingKey {
+        case serviceURL, serviceType, serviceID, id, displayName, usesSubtitles, pin, autoplay, darkTheme, lightTheme, playbackSpeed
+        case loadThumbnailArt, loadMediaBackgroundArt, replaceLogosWithText, preferredLangauge, searchEpisodeTitles, showFilters
+        case showSorting
+    }
+
+    public static func == (lhs: User, rhs: User) -> Bool { lhs.id == rhs.id }
+
+    public func hash(into hasher: inout Hasher) { hasher.combine(self.id) }
 
     public init(
         serviceURL: URL,
         serviceType: ServiceType,
         serviceID: String,
         id: String,
+        storage: UserStorageProtocol,
         displayName: String,
-        usesSubtitles: Bool = false,
-        pin: String? = nil,
-        autplay: Bool = false,
-        darkTheme: Themes = .deepSea,
-        lightTheme: Themes = .beach,
-        playbackSpeed: PlaybackSpeed = .one,
-        loadThumbnailArt: Bool = true,
-        loadMediaBackgroundArt: Bool = true,
-        replaceLogosWithText: Bool = false,
-        preferredLanguage: Locale? = nil,
-        searchEpisodeTitles: Bool = false,
-        showFilters: Bool = true,
-        showSorting: Bool = true
+        usesSubtitles: Bool,
+        pin: String?,
+        autoplay: Bool,
+        darkTheme: Themes,
+        lightTheme: Themes,
+        playbackSpeed: PlaybackSpeed,
+        loadThumbnailArt: Bool,
+        loadMediaBackgroundArt: Bool,
+        replaceLogosWithText: Bool,
+        preferredLanguage: Locale?,
+        searchEpisodeTitles: Bool,
+        showFilters: Bool,
+        showSorting: Bool
     ) {
         self.id = id
         self.displayName = displayName
+        self.storage = storage
         self.serviceURL = serviceURL
         self.serviceType = serviceType
         self.serviceID = serviceID
         self.usesSubtitles = usesSubtitles
         self.pin = pin
-        self.autoplay = autplay
+        self.autoplay = autoplay
         self.darkTheme = darkTheme
         self.lightTheme = lightTheme
         self.playbackSpeed = playbackSpeed
@@ -216,6 +290,35 @@ public struct User: UserProtocol, Codable, Identifiable, Hashable {
             else { throw JSONError.failedJSONDecode("User", DecodingError.valueNotFound(Any.self, context)) }
         }
         catch { throw JSONError.failedJSONDecode("User", error) }
+    }
+
+    /// Encode the user into JSON. Skips the storage
+    /// - Parameter encoder: JSON encoder
+    public func encode(to encoder: Encoder) throws(JSONError) {
+        do {
+            var container = encoder.container(keyedBy: CodingKeys.self)
+
+            try container.encode(serviceURL, forKey: .serviceURL)
+            try container.encode(serviceType, forKey: .serviceType)
+            try container.encode(serviceID, forKey: .serviceID)
+            try container.encode(id, forKey: .id)
+            try container.encode(displayName, forKey: .displayName)
+            // Settings
+            try container.encodeIfPresent(pin, forKey: .pin)
+            try container.encode(autoplay, forKey: .autoplay)
+            try container.encode(usesSubtitles, forKey: .usesSubtitles)
+            try container.encode(darkTheme, forKey: .darkTheme)
+            try container.encode(lightTheme, forKey: .lightTheme)
+            try container.encode(playbackSpeed, forKey: .playbackSpeed)
+            try container.encode(loadThumbnailArt, forKey: .loadThumbnailArt)
+            try container.encode(loadMediaBackgroundArt, forKey: .loadMediaBackgroundArt)
+            try container.encode(replaceLogosWithText, forKey: .replaceLogosWithText)
+            try container.encodeIfPresent(preferredLangauge, forKey: .preferredLangauge)
+            try container.encode(searchEpisodeTitles, forKey: .searchEpisodeTitles)
+            try container.encode(showFilters, forKey: .showFilters)
+            try container.encode(showSorting, forKey: .showSorting)
+        }
+        catch { throw JSONError.failedJSONEncode("User \(self.displayName)") }
     }
 }
 
