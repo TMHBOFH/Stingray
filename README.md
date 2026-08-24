@@ -78,6 +78,7 @@ Configure Stingray to look and feel how you want it.
   - Add a missing "No image available" placeholder for people with no images
   - Add marquee-style text for people's names and roles
   - Add a proper loading indicator to the TV show play button
+  - If a PIN is configured, display the PIN entry screen on a cold boot even in "Manual" profile switching
 - Cleanups
   - Repo Organization
     - Rename "Other-Assets" to "Other Assets"

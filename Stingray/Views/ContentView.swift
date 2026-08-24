@@ -30,6 +30,8 @@ public struct ContentView: View {
     @State private var theme: ThemeModel
     @State private var userModel: UserModel
     @State private var purchases: PurchasesModel
+    /// Gates cold-boot auto sign-in behind a PIN when the resumed user has one set
+    @State private var pinModel: PINModel?
 
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.colorScheme) private var colorScheme
@@ -96,6 +98,17 @@ public struct ContentView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .stingrayBackground()
         .ignoresSafeArea()
+        .fullScreenCover(isPresented: Binding(
+            get: { self.pinModel?.isPresented ?? false },
+            set: { newValue in self.pinModel?.isPresented = newValue }
+        )) {
+            if let pinModel = self.pinModel {
+                PINEntry(model: pinModel)
+                    .padding(64)
+                    .stingrayBackground()
+                    .ignoresSafeArea()
+            }
+        }
         .environment(self.theme)
         .environment(self.settings)
         .environment(self.purchases)
@@ -131,6 +144,21 @@ public struct ContentView: View {
                 Log.info("Users exist, but there's no active user. Showing profile picker")
                 self.loginState = .pickingUser
                 return
+            }
+
+            // Manual profile switching skips the picker entirely, so the PIN must be gated here instead
+            if defaultUser.pin != nil {
+                Log.info("Cold boot requires a PIN for \(defaultUser.displayName)")
+                let pinModel = PINModel(for: defaultUser)
+                self.pinModel = pinModel
+                pinModel.isPresented = true
+                switch await pinModel.status {
+                case .success: break
+                case .canceled:
+                    Log.info("PIN entry canceled on cold boot, showing profile picker")
+                    self.loginState = .pickingUser
+                    return
+                }
             }
 
             switch defaultUser.serviceType {

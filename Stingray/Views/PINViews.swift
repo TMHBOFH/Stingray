@@ -94,6 +94,7 @@ public final class PINModel {
 
     /// Hands `status` to the awaiting caller. Later calls are ignored, so reporting twice is harmless.
     fileprivate func finish(_ status: Status) {
+        self.isPresented = false // Dismiss whatever cover is showing this model's PINEntry
         let continuation = self.continuation
         self.continuation = nil // Cleared first so a re-entrant call can't resume twice
         continuation?.resume(returning: status)
