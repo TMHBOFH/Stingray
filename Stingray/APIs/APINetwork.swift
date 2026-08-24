@@ -640,27 +640,46 @@ public final class JellyfinAdvancedNetwork: AdvancedNetworkProtocol {
         title: String,
         subtitle: String?
     ) -> AVPlayerItem? {
+        let capabilities = AppleTVCapabilities.current
+
+        var videoParams: [URLQueryItem] = [
+            URLQueryItem(name: "videoBitRate", value: String(bitrate)),
+            URLQueryItem(name: "container", value: "mp4"),
+            URLQueryItem(name: "transcodingContainer", value: "mp4"),
+            URLQueryItem(name: "allowVideoStreamCopy", value: "true"),
+            URLQueryItem(name: "deInterlace", value: "true")
+        ]
+
+        if capabilities.supportsHEVC {
+            var rangeTypes = ["SDR"]
+            if capabilities.supportsHDR10 { rangeTypes.append("HDR10") }
+            if capabilities.supportsHDR10Plus { rangeTypes.append("HDR10Plus") }
+            if capabilities.supportsDolbyVision {
+                rangeTypes.append(contentsOf: ["DOVI", "DOVIWithSDR", "DOVIWithHDR10"])
+                if capabilities.supportsHDR10Plus { rangeTypes.append("DOVIWithHDR10Plus") }
+            }
+
+            videoParams.append(contentsOf: [
+                URLQueryItem(name: "videoCodec", value: "hevc,h264"),
+                URLQueryItem(name: "hevc-videobitdepth", value: "10"),
+                URLQueryItem(name: "hevc-rangetype", value: rangeTypes.joined(separator: ",")),
+                URLQueryItem(name: "hevc-level", value: String(capabilities.maxHEVCLevel)),
+                URLQueryItem(name: "hevc-profile", value: "main10"),
+                URLQueryItem(name: "hevc-codectag", value: "hvc1,dvh1"),
+                URLQueryItem(name: "h265-codectag", value: "hvc1,dvh1")
+            ])
+        }
+        else { videoParams.append(URLQueryItem(name: "videoCodec", value: "h264")) }
+
         var params: [URLQueryItem] = [
             // Media selection
             URLQueryItem(name: "playSessionID", value: sessionID),
             URLQueryItem(name: "mediaSourceID", value: contentID),
             URLQueryItem(name: "audioStreamIndex", value: String(audioID)),
-            URLQueryItem(name: "videoStreamIndex", value: String(videoID)),
-            
-            // Video config
-            URLQueryItem(name: "videoBitRate", value: String(bitrate)),
-            URLQueryItem(name: "videoCodec", value: "hevc,h264"),
-            URLQueryItem(name: "container", value: "mp4"),
-            URLQueryItem(name: "transcodingContainer", value: "mp4"),
-            URLQueryItem(name: "allowVideoStreamCopy", value: "true"),
-            URLQueryItem(name: "hevc-videobitdepth", value: "10"),
-            URLQueryItem(name: "hevc-rangetype", value: "SDR,HDR10,HDR10Plus,DOVI,DOVIWithHDR10,DOVIWithSDR,DOVIWithHDR10Plus"),
-            URLQueryItem(name: "hevc-level", value: "153"),
-            URLQueryItem(name: "hevc-profile", value: "main10"),
-            URLQueryItem(name: "hevc-codectag", value: "hvc1,dvh1"),
-            URLQueryItem(name: "deInterlace", value: "true"),
-            URLQueryItem(name: "h265-codectag", value: "hvc1,dvh1,dvhe"),
-            
+            URLQueryItem(name: "videoStreamIndex", value: String(videoID))
+        ]
+        params.append(contentsOf: videoParams)
+        params.append(contentsOf: [
             // Audio config
             URLQueryItem(name: "audioCodec", value: "aac,ac3,eac3,alac,mp3"),
             URLQueryItem(name: "allowAudioStreamCopy", value: "true"),
@@ -672,8 +691,8 @@ public final class JellyfinAdvancedNetwork: AdvancedNetworkProtocol {
             URLQueryItem(name: "segmentContainer", value: "mp4"),
             URLQueryItem(name: "copyTimestamps", value: "true"),
             URLQueryItem(name: "enableAutoStreamCopy", value: "true")
-        ]
-        
+        ])
+
         if let subtitleID = subtitleID {
             params.append(URLQueryItem(name: "SubtitleMethod", value: "Encode"))
             params.append(URLQueryItem(name: "subtitleStreamIndex", value: String(subtitleID)))

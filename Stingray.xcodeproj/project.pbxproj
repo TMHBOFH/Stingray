@@ -59,6 +59,7 @@
 				Extensions/DecoderExtension.swift,
 				Extensions/TimeIntervalExtension.swift,
 				Extensions/URLExtension.swift,
+				Models/AppleTVCapabilitiesModel.swift,
 				Models/LoggerModel.swift,
 				Models/MediaModelRepresentable.swift,
 				Models/Purchases.storekit,

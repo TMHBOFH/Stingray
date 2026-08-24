@@ -257,24 +257,10 @@ public struct SystemInfoView: View {
             let osVersion = ProcessInfo.processInfo.operatingSystemVersion
             Text(" • " + "tvOS \(osVersion.majorVersion).\(osVersion.minorVersion).\(osVersion.patchVersion)")
             // Apple TV model
-            if let model = Self.tvModel {
-                Text(" • " + model)
-            }
+            Text(" • " + AppleTVCapabilities.current.hardwareModel)
         }
         .foregroundStyle(.tertiary)
     }
-
-    /// Computed once on first access and then cached
-    public static let tvModel: String? = {
-        var systemInfo = utsname()
-        uname(&systemInfo)
-        let machineMirror = Mirror(reflecting: systemInfo.machine)
-        let identifier = machineMirror.children.reduce("") { identifier, element in
-            guard let value = element.value as? Int8, value != 0 else { return identifier }
-            return identifier + String(UnicodeScalar(UInt8(value)))
-        }
-        return identifier.isEmpty ? nil : identifier
-    }()
 }
 
 public struct LibrariesInfoView: View {
