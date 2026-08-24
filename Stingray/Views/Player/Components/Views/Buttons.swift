@@ -166,10 +166,11 @@ public final class PlayerButtons {
             vm.newPlayer(startTime: vm.player.currentTime(), videoID: .keep, audioID: .keep, subtitleID: .keep, bitrate: nil)
         }
         fullBitrate.state = {
-            if SettingsModel.bitrateOptions.contains(vm.playerProgress?.bitrate ?? -1) {
-                return .off
+            if let requestedBitrate = vm.playerProgress?.bitrate, videoStream.bitrate <= requestedBitrate ||
+                vm.playerProgress?.bitrate == nil {
+                return .on
             }
-            return .on
+            return .off
         }()
         var bitrateOptions: [UIAction] = [fullBitrate]
 
@@ -178,13 +179,7 @@ public final class PlayerButtons {
             let action = UIAction(title: Int.formatMegabitsPerSec(bitrate)) { _ in
                 vm.newPlayer(startTime: vm.player.currentTime(), videoID: .keep, audioID: .keep, subtitleID: .keep, bitrate: bitrate)
             }
-            action.state = {
-                if vm.playerProgress?.bitrate == bitrate {
-                    return .on
-                } else {
-                    return .off
-                }
-            }()
+            action.state = vm.playerProgress?.bitrate == bitrate ? .on : .off
             return action
         }
 
@@ -194,7 +189,7 @@ public final class PlayerButtons {
         }
 
         let bitrateIcon: String = {
-            if SettingsModel.bitrateOptions.contains(vm.playerProgress?.bitrate ?? -1) {
+            if let requestedBitrate = vm.playerProgress?.bitrate, videoStream.bitrate > requestedBitrate {
                 return "wifi.badge.lock"
             }
             return "wifi"
