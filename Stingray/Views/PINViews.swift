@@ -57,23 +57,63 @@ public struct PINSetup: View {
     }
 }
 
+/// Tracks data about entering PINs
+@Observable
+public final class PINModel {
+    /// Tracks if PIN entry is shown
+    public var isPresented: Bool
+
+    /// Resumed by `finish(_:)`; `nil` whenever nobody is waiting
+    private var continuation: CheckedContinuation<Status, Never>?
+    
+    /// User to test against
+    fileprivate var user: UserProtocol
+
+    /// PIN successfulness
+    public enum Status {
+        /// The PIN was entered correctly
+        case success
+        /// The user did not enter the correct PIN
+        case canceled
+    }
+    
+    /// Create a model for storing PIN entry information
+    public init(for user: UserProtocol) {
+        self.user = user
+        self.isPresented = false
+        self.continuation = nil
+    }
+
+    /// Suspends until the PIN view reports back. One awaiting caller at a time.
+    public var status: Status {
+        get async {
+            await withTaskCancellationHandler { await withCheckedContinuation { self.continuation = $0 } }
+            onCancel: { Task { @MainActor in self.finish(.canceled) } }
+        }
+    }
+
+    /// Hands `status` to the awaiting caller. Later calls are ignored, so reporting twice is harmless.
+    fileprivate func finish(_ status: Status) {
+        let continuation = self.continuation
+        self.continuation = nil // Cleared first so a re-entrant call can't resume twice
+        continuation?.resume(returning: status)
+    }
+}
+
 public struct PINEntry: View {
-    @Environment(\.dismiss) private var dismiss
-    public let userModel: UserModelProtocol
     @Environment(SettingsModel.self) private var settings
 
-    /// Not read, only set to successfully login or switch users
-    @Binding public var loginState: LoginState
-    /// User the PIN is meant for
-    public let user: any UserProtocol
     /// PIN attempt
     @State private var pinEntry: String = ""
     /// Reason to not allow sign-in
     @State private var error: String = ""
 
+    /// Tracks the PIN entry attempt and reports the result back to the caller
+    public let model: PINModel
+
     public var body: some View {
         VStack {
-            Text("Enter PIN for \(self.user.displayName)")
+            Text("Enter PIN for \(self.model.user.displayName)")
                 .font(.title)
                 .fontWeight(.bold)
             Spacer()
@@ -82,24 +122,23 @@ public struct PINEntry: View {
             Spacer()
             HStack {
                 Button("Submit") {
-                    if self.user.pin != self.pinEntry {
+                    if self.model.user.pin != self.pinEntry {
                         self.error = "Invalid PIN"
                         return
                     }
-                    self.loginState = ProfilePickerView.switchUser(
-                        user: self.user,
-                        userModel: self.userModel,
-                        currentLoginState: self.loginState,
-                        settingsModel: self.settings
-                    )
+                    self.model.finish(.success)
                 }
                 .disabled(pinEntry.isEmpty)
-                Button("Switch User...") { self.loginState = .pickingUser }
+                Button("Cancel") { self.model.finish(.canceled) }
             }
             Text(self.error)
                 .foregroundStyle(.red)
                 .opacity(self.error.isEmpty ? 0 : 1)
         }
+        .onAppear { // Escape if there is no PIN for a little safety
+            if self.model.user.pin == nil { self.model.finish(.success) }
+        }
+        .onDisappear { self.model.finish(.canceled) } // If already fired, this is meaningless
     }
 }
 

@@ -40,7 +40,7 @@ public struct ProfilePickerView: View {
                     ForEach(itemRow) { item in
                         switch item {
                         case .user(let user):
-                            ProfilePickerUser(userModel: self.userModel, loginState: $loginState, user: user)
+                            ProfilePickerUser(loginState: $loginState, userModel: self.userModel, user: user)
                                 .frame(width: Self.optionSize.width, height: Self.optionSize.height)
                         case .addProfile:
                             AddProfile(loginState: $loginState, userModel: self.userModel)
@@ -77,17 +77,28 @@ public struct ProfilePickerView: View {
         user: any UserProtocol,
         userModel: UserModelProtocol,
         currentLoginState: LoginState,
-        settingsModel: SettingsModel
-    ) -> LoginState {
+        settingsModel: SettingsModel,
+        pinModel: PINModel
+    ) async -> LoginState {
         userModel.activeUser = user
 
         // If we're already logged in as this user, reuse the existing streaming service instance
         if case .loggedIn(let existingService, _) = currentLoginState {
             if existingService.userID == user.id { return currentLoginState } // Return the same state to avoid recreating the service
-            else if user.pin != nil { return .requiresPIN(user) } // May require a PIN when switching users
+            else if user.pin != nil {  // May require a PIN when switching users
+                pinModel.isPresented = true
+                switch await pinModel.status {
+                case .success: break
+                case .canceled: return currentLoginState
+                }
+            }
         }
-        if case .pickingUser = currentLoginState, user.pin != nil {
-            return .requiresPIN(user) // May require a PIN when switching users
+        if case .pickingUser = currentLoginState, user.pin != nil { // May require a PIN when switching users
+            pinModel.isPresented = true
+            switch await pinModel.status {
+            case .success: break
+            case .canceled: return currentLoginState
+            }
         }
         settingsModel.switchUser(to: user)
         // Otherwise, create a new streaming service instance
@@ -175,29 +186,42 @@ fileprivate struct ProfilePickerImage: View {
 }
 
 fileprivate struct ProfilePickerUser: View {
-    /// Functions and values regarding the users
-    public let userModel: UserModelProtocol
     /// Current settings for the user
     @Environment(SettingsModel.self) private var settings
     /// Theme data for this user
     @Environment(ThemeModel.self) private var theme
     /// Login state for the entire app
-    @Binding var loginState: LoginState
+    @Binding private var loginState: LoginState
 
     /// Controls showing the logout confirmation alert
-    @State private var showLogoutAlert: Bool = false
+    @State private var showLogoutAlert: Bool
+    /// Controls showing the PIN screen for switching users
+    @State private var pinModel: PINModel
 
+    /// Functions and values regarding the users
+    private let userModel: UserModelProtocol
     /// User to display
-    let user: User
+    private let user: UserProtocol
+
+    init(loginState: Binding<LoginState>, userModel: UserModelProtocol, user: UserProtocol) {
+        self.showLogoutAlert = false
+        self._loginState = loginState
+        self.userModel = userModel
+        self.user = user
+        self.pinModel = PINModel(for: user)
+    }
 
     var body: some View {
         Button {
-            self.loginState = ProfilePickerView.switchUser(
-                user: user,
-                userModel: self.userModel,
-                currentLoginState: self.loginState,
-                settingsModel: self.settings
-            )
+            Task {
+                self.loginState = await ProfilePickerView.switchUser(
+                    user: user,
+                    userModel: self.userModel,
+                    currentLoginState: self.loginState,
+                    settingsModel: self.settings,
+                    pinModel: self.pinModel
+                )
+            }
         }
         label: {
             VStack(alignment: .center) {
@@ -223,5 +247,11 @@ fileprivate struct ProfilePickerUser: View {
             .clipShape(RoundedRectangle(cornerRadius: 40))
         }
         .buttonStyle(.plain)
+        .fullScreenCover(isPresented: self.$pinModel.isPresented) {
+            PINEntry(model: self.pinModel)
+                .padding(64)
+                .stingrayBackground()
+                .ignoresSafeArea()
+        }
     }
 }

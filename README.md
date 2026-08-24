@@ -100,6 +100,9 @@ Configure Stingray to look and feel how you want it.
   - Remove the redundant `waiting` status for streaming service libraries status
   - Remove the poorly used library media type
   - Add season sync status with `TVSeasonsAvailable`
+  - `User` is now a class, helping ensure data stays synced across the app
+  - The active user is now stored in the `LoginStatus` state machine, replacing `UserModel.activeUser` in most cases
+  - Reworked PIN mechanism to work asynchronously and force the use of the new `PINModel` for more reliable PIN usage     
 - Bug Fixes
   - Specify do not sleep while playing video
   - Allow moving from media metadata to play button
@@ -110,6 +113,7 @@ Configure Stingray to look and feel how you want it.
   - Improve error handling for loading show episodes
   - Allow `AsyncBlurImage` to re-attempt downloads
   - Add error handling for failing to sync library version
+  - Hitting cancel on the PIN entry screen no longer navigates to the switch user page
 - Performance
   - Only calculate blur hash once and globally cache it
     - Improves speed to opening detail media views

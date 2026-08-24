@@ -20,8 +20,6 @@ public enum LoginState {
     )
     /// There are accounts signed in, but the current user needs to be picked
     case pickingUser
-    /// User is signed in, but requires a PIN
-    case requiresPIN(any UserProtocol)
 }
 
 public struct ContentView: View {
@@ -72,8 +70,6 @@ public struct ContentView: View {
                     Spacer()
                 }
                 .padding(128)
-            case .requiresPIN(let user):
-                PINEntry(userModel: self.userModel, loginState: $loginState, user: user)
 
             case .loggedIn(let streamingService, let user):
                 DashboardView(
@@ -105,7 +101,7 @@ public struct ContentView: View {
         .environment(self.purchases)
         .environment(\.locale, self.settings.langauge ?? self.locale)
         .onChange(of: self.colorScheme, initial: true) { self.settings.systemTheme = $1 }
-        .onAppear {
+        .task {
             switch self.loginState {
             case .loggedIn: return
             default: break
@@ -134,12 +130,6 @@ public struct ContentView: View {
             else {
                 Log.info("Users exist, but there's no active user. Showing profile picker")
                 self.loginState = .pickingUser
-                return
-            }
-
-            // User requires PIN
-            if defaultUser.pin != nil {
-                self.loginState = .requiresPIN(defaultUser)
                 return
             }
 
