@@ -23,6 +23,11 @@ public class AVPlayerCoordinator: NSObject, AVPlayerViewControllerDelegate {
     // Track whether we're restoring vs closing
     private var isRestoringFromPiP = false
 
+    // Keep error observation alive for the lifetime of the coordinator
+    private var currentItemObservation: NSKeyValueObservation?
+    private var itemStatusObservation: NSKeyValueObservation?
+    private var failedToPlayObserver: NSObjectProtocol?
+
     public init(
         id: String,
         onStartPiP: @escaping () -> Void,
@@ -39,6 +44,43 @@ public class AVPlayerCoordinator: NSObject, AVPlayerViewControllerDelegate {
         // On tvOS, stopping the player will end PiP automatically
         playerViewController?.player?.pause()
         playerViewController?.player?.replaceCurrentItem(with: nil)
+    }
+
+    // AI Generated
+    /// Logs playback failures for `player`, re-hooking observation whenever its current item changes.
+    /// - Parameter player: The player whose current item should be watched for failures.
+    public func observeFailures(of player: AVPlayer) {
+        self.currentItemObservation = player.observe(\.currentItem, options: [.initial, .new]) { [weak self] player, _ in
+            self?.observeFailures(of: player.currentItem)
+        }
+    }
+
+    // AI Generated
+    private func observeFailures(of item: AVPlayerItem?) {
+        if let failedToPlayObserver { NotificationCenter.default.removeObserver(failedToPlayObserver) }
+        self.itemStatusObservation = nil
+        self.failedToPlayObserver = nil
+        guard let item else { return }
+
+        self.itemStatusObservation = item.observe(\.status, options: [.new]) { item, _ in
+            if item.status == .failed {
+                Log.error("Player item failed to load: \(item.error?.localizedDescription ?? "Unknown error")")
+            }
+        }
+
+        self.failedToPlayObserver = NotificationCenter.default.addObserver(
+            forName: AVPlayerItem.failedToPlayToEndTimeNotification,
+            object: item,
+            queue: .main
+        ) { notification in
+            let error = notification.userInfo?[AVPlayerItemFailedToPlayToEndTimeErrorKey] as? Error
+            Log.error("Playback failed to reach end: \(error?.localizedDescription ?? "Unknown error")")
+        }
+    }
+
+    // AI Generated
+    deinit {
+        if let failedToPlayObserver { NotificationCenter.default.removeObserver(failedToPlayObserver) }
     }
 
     public func playerViewControllerWillStartPictureInPicture(_ playerViewController: AVPlayerViewController) {

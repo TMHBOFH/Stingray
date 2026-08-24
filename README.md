@@ -79,6 +79,7 @@ Configure Stingray to look and feel how you want it.
   - Add marquee-style text for people's names and roles
   - Add a proper loading indicator to the TV show play button
   - If a PIN is configured, display the PIN entry screen on a cold boot even in "Manual" profile switching
+  - Improved logging for video players
 - Cleanups
   - Repo Organization
     - Rename "Other-Assets" to "Other Assets"

@@ -196,11 +196,14 @@ public final class TVPlayerViewModel: AVPlayerViewModelProtocol, Hashable {
     /// Creates a new player based on current state and new episode
     /// - Parameter episode: Episode to transition into
     public func newPlayer(episode: any TVEpisodeProtocol) {
-        guard let oldVideoStream = mediaSource.videoStreams.first(where: { self.playerProgress?.videoID == $0.id }),
+        guard let oldVideoStream = self.mediaSource.videoStreams.first(where: { self.playerProgress?.videoID == $0.id }),
               let newVideoStream = episode.mediaSources.first?.getSimilarStream(baseStream: oldVideoStream, streamType: .video),
-              let oldAudioStream = mediaSource.audioStreams.first(where: { self.playerProgress?.audioID == $0.id }),
+              let oldAudioStream = self.mediaSource.audioStreams.first(where: { self.playerProgress?.audioID == $0.id }),
               let newAudioStream = episode.mediaSources.first?.getSimilarStream(baseStream: oldAudioStream, streamType: .audio)
-        else { return }
+        else {
+            Log.warning("Failed to find similar streams for \(episode.title)")
+            return
+        }
         var newSubtitleStream: (any MediaStreamProtocol)?
         if let oldSubtitleStream = mediaSource.subtitleStreams.first(where: { self.playerProgress?.subtitleID == $0.id }) {
             newSubtitleStream = episode.mediaSources.first?.getSimilarStream(baseStream: oldSubtitleStream, streamType: .subtitle)

@@ -684,8 +684,11 @@ public final class JellyfinAdvancedNetwork: AdvancedNetworkProtocol {
             urlParams: params,
             // TODO: remove X-MediaBrowser-Token when the backward compatibility is no longer required
             headers: ["X-MediaBrowser-Token": accessToken, "Authorization": network.buildAuthHeader(accessToken: accessToken)]
-        ) else { return nil }
-        
+        ) else {
+            Log.error("Failed to build the AVPlayerItem")
+            return nil
+        }
+
         // Set the title metadata
         let titleMetadata = AVMutableMetadataItem()
         titleMetadata.identifier = .commonIdentifierTitle

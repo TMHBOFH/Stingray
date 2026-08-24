@@ -580,7 +580,11 @@ public final class JellyfinModel: SystemInfoProviding, LibraryProviding, PlayerP
         player: AVPlayer
     ) {
         let sessionID = UUID().uuidString
-        guard let videoStream = mediaSource.videoStreams.first(where: { $0.id == videoID }) else { return }
+        guard let videoStream = mediaSource.videoStreams.first(where: { $0.id == videoID })
+        else {
+            Log.error("No video streams available for \(mediaSource.name) - \(mediaSource.id)")
+            return
+        }
         let bitrateBits = bitrate ?? videoStream.bitrate
 
         guard let playerItem = networkAPI.getStreamingContent(
@@ -594,7 +598,10 @@ public final class JellyfinModel: SystemInfoProviding, LibraryProviding, PlayerP
             title: title,
             subtitle: subtitle
         )
-        else { return }
+        else {
+            Log.error("Failed to generate a player item for \(mediaSource.name) - \(mediaSource.id)")
+            return
+        }
         player.replaceCurrentItem(with: playerItem)
 
         self.playerProgress = JellyfinPlayerProgress(

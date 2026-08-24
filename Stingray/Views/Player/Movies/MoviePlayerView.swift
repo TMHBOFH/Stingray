@@ -84,6 +84,7 @@ fileprivate struct PlayerViewControllerRepresentable: UIViewControllerRepresenta
         controller.delegate = context.coordinator
 
         context.coordinator.playerViewController = controller
+        context.coordinator.observeFailures(of: self.vm.player)
 
         var playerTabs: [UIViewController] = []
 
