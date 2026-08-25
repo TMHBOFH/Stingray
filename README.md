@@ -82,6 +82,7 @@ Configure Stingray to look and feel how you want it.
   - Improved error logging for video players
   - If the limited bitrate is greater than the media stream's bitrate, do not show as limited in the player
   - Require PIN for logging out
+  - Reset settings button
 - Cleanups
   - Repo Organization
     - Rename "Other-Assets" to "Other Assets"

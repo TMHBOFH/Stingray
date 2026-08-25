@@ -224,6 +224,9 @@
         }
       }
     },
+    "Are you sure you want to reset all settings to default for %@" : {
+
+    },
     "Ask on Launch" : {
       "comment" : "Ask to switch profiles when Stingray launches from a cold start",
       "localizations" : {
@@ -1722,6 +1725,15 @@
           }
         }
       }
+    },
+    "Reset" : {
+      "comment" : "Wash away any changes made"
+    },
+    "Reset Settings" : {
+      "comment" : "Reset settings back to defaults"
+    },
+    "Reset Settings..." : {
+      "comment" : "Button indicating further dialogs will appear to reset settings"
     },
     "Reshuffle" : {
       "comment" : "A button that reshuffles the order of the media.",

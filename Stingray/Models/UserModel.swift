@@ -31,6 +31,10 @@ public protocol UserModelProtocol: AnyObject {
         id: String,
         displayName: String
     ) -> User
+    
+    /// Reset the user's settings to default
+    /// - Parameter user: User to reset
+    func reset(user: UserProtocol)
 }
 
 /// Basic structure for a stored user.
@@ -54,25 +58,25 @@ public protocol UserProtocol: AnyObject, Codable {
 
     // Settings
     /// Track if the user wants subtitles
-    var usesSubtitles: Bool { get set}
+    var usesSubtitles: Bool { get set }
     /// Quick password required for user sign-in
-    var pin: String? { get set}
+    var pin: String? { get set }
     /// Play the next piece of content if available
-    var autoplay: Bool { get set}
+    var autoplay: Bool { get set }
     /// The user's dark theme choice
-    var darkTheme: Themes { get set}
+    var darkTheme: Themes { get set }
     /// The user's light theme choice
-    var lightTheme: Themes { get set}
+    var lightTheme: Themes { get set }
     /// How fast the viewer wants the player to run
-    var playbackSpeed: PlaybackSpeed { get set}
+    var playbackSpeed: PlaybackSpeed { get set }
     /// A toggle for whether to display posters
-    var loadThumbnailArt: Bool { get set}
+    var loadThumbnailArt: Bool { get set }
     /// A toggle for whether to display art on the detail media view
-    var loadMediaBackgroundArt: Bool { get set}
+    var loadMediaBackgroundArt: Bool { get set }
     /// A toggle for whether to display media logos or text
-    var replaceLogosWithText: Bool { get set}
+    var replaceLogosWithText: Bool { get set }
     /// What language the user prefers to read/speak
-    var preferredLangauge: Locale? { get set}
+    var preferredLangauge: Locale? { get set }
     /// Allow searching to look at episode titles to surface relevant results
     var searchEpisodeTitles: Bool { get set }
     /// Display filters options in library views
@@ -162,6 +166,21 @@ public final class UserModel: UserModelProtocol {
         self.storage.setUserIDs(Array(self.userIDs))
 
         return user
+    }
+
+    public func reset(user: UserProtocol) {
+        user.usesSubtitles = false
+        user.pin = nil
+        user.autoplay = false
+        user.darkTheme = .deepSea
+        user.lightTheme = .beach
+        user.loadThumbnailArt = true
+        user.loadMediaBackgroundArt = true
+        user.replaceLogosWithText = false
+        user.preferredLangauge = nil
+        user.searchEpisodeTitles = false
+        user.showFilters = true
+        user.showSorting = true
     }
 }
 

@@ -31,6 +31,8 @@ public struct SettingsView: View {
 
     @State private var enterPIN: PINModel
 
+    @State private var showResetSettings: Bool
+
     public let streamingService: UserProviding
     
     /// Create a SettingsView view for altering user and app settings
@@ -45,6 +47,7 @@ public struct SettingsView: View {
         self.showSupportStingray = false
         self.showLogs = false
         self.showRefreshLogin = false
+        self.showResetSettings = false
         self._loginState = loginState
         self.userModel = userModel
         self.user = user
@@ -84,37 +87,65 @@ public struct SettingsView: View {
                             .stingrayBackground()
                             .ignoresSafeArea()
                     }
-                if let user = self.userModel.activeUser {
-                    DoubleButton(label: "Logout...", sublabel: "", role: .destructive) { self.showLogoutAlert = true }
-                        .alert(
-                            Text(String(localized: "Logout \(user.displayName)")),
-                            isPresented: $showLogoutAlert
-                        ) {
-                            Button("Logout", role: .destructive) {
-                                Task {
-                                    if self.user.pin != nil {
-                                        self.enterPIN.isPresented = true
-                                        switch await enterPIN.status {
-                                        case .success: self.enterPIN = PINModel(for: self.user)
-                                        case .canceled:
-                                            self.enterPIN = PINModel(for: self.user)
-                                            return
-                                        }
+                DoubleButton(label: "Logout...", sublabel: "", role: .destructive) { self.showLogoutAlert = true }
+                    .alert(
+                        Text(String(localized: "Logout \(user.displayName)")),
+                        isPresented: $showLogoutAlert
+                    ) {
+                        Button("Logout", role: .destructive) {
+                            Task {
+                                if self.user.pin != nil {
+                                    self.enterPIN.isPresented = true
+                                    switch await enterPIN.status {
+                                    case .success: self.enterPIN = PINModel(for: self.user)
+                                    case .canceled:
+                                        self.enterPIN = PINModel(for: self.user)
+                                        return
                                     }
-                                    self.userModel.deleteUser(user.id)
-                                    await self.streamingService.logout()
-                                    if self.userModel.userIDs.isEmpty { self.loginState = .loggedOut }
-                                    else { self.loginState = .pickingUser }
                                 }
+                                self.userModel.deleteUser(user.id)
+                                await self.streamingService.logout()
+                                if self.userModel.userIDs.isEmpty { self.loginState = .loggedOut }
+                                else { self.loginState = .pickingUser }
                             }
                         }
-                    message: { Text(String(localized: "Are you sure you want \(user.displayName) to logout?")) }
-                        .fullScreenCover(isPresented: self.$enterPIN.isPresented) {
-                            PINEntry(model: self.enterPIN)
-                                .padding(64)
-                                .stingrayBackground()
-                                .ignoresSafeArea()
+                    }
+                message: { Text(String(localized: "Are you sure you want \(user.displayName) to logout?")) }
+                    .fullScreenCover(isPresented: self.$enterPIN.isPresented) {
+                        PINEntry(model: self.enterPIN)
+                            .padding(64)
+                            .stingrayBackground()
+                            .ignoresSafeArea()
+                    }
+                DoubleButton(label: "Reset Settings...", sublabel: "", role: .destructive) { self.showResetSettings = true }
+                    .alert(
+                        Text(String(localized: "Reset Settings")),
+                        isPresented: self.$showResetSettings
+                    ) {
+                        Button("Reset", role: .destructive) {
+                            Task {
+                                if self.user.pin != nil {
+                                    switch await self.enterPIN.status {
+                                    case .success: self.enterPIN = PINModel(for: self.user)
+                                    case .canceled:
+                                        self.enterPIN = PINModel(for: self.user)
+                                        return
+                                    }
+                                }
+                                self.userModel.reset(user: self.user)
+                                self.settings.bitrate = nil
+                                self.settings.profileSwitchingMethod = .askOnLaunch
+                            }
                         }
+                    }
+                message: {
+                    Text(String(localized: "Are you sure you want to reset all settings to default for \(self.user.displayName)"))
+                }
+                .fullScreenCover(isPresented: self.$enterPIN.isPresented) {
+                    PINEntry(model: self.enterPIN)
+                        .padding(64)
+                        .stingrayBackground()
+                        .ignoresSafeArea()
                 }
             }
 
