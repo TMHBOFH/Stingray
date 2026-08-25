@@ -13,9 +13,9 @@ public struct SettingsView: View {
     /// System-wide settings
     @Environment(SettingsModel.self) private var settings: SettingsModel
     /// Controls the pin configuration screen showing and hiding
-    @State private var showPinSetup: Bool = false
+    @State private var showPinSetup: Bool
     /// Controls when to show a dialog box for logging out
-    @State private var showLogoutAlert: Bool = false
+    @State private var showLogoutAlert: Bool
 
     public var userModel: UserModelProtocol
 
@@ -23,13 +23,34 @@ public struct SettingsView: View {
 
     @Environment(PurchasesModel.self) private var purchases: PurchasesModel
     /// Controls the sheet to show the supporting Stingray screen
-    @State private var showSupportStingray: Bool = false
+    @State private var showSupportStingray: Bool
     /// Controlls the sheet to show the current session's logs
-    @State private var showLogs: Bool = false
+    @State private var showLogs: Bool
 
-    @State private var showRefreshLogin: Bool = false
+    @State private var showRefreshLogin: Bool
+
+    @State private var enterPIN: PINModel
 
     public let streamingService: UserProviding
+    
+    /// Create a SettingsView view for altering user and app settings
+    /// - Parameters:
+    ///   - loginState: The login state machine
+    ///   - userModel: Location where all users are stored
+    ///   - user: User to load preferences for
+    ///   - streamingService: Current connection to server
+    public init(loginState: Binding<LoginState>, userModel: UserModelProtocol, user: UserProtocol, streamingService: UserProviding) {
+        self.showPinSetup = false
+        self.showLogoutAlert = false
+        self.showSupportStingray = false
+        self.showLogs = false
+        self.showRefreshLogin = false
+        self._loginState = loginState
+        self.userModel = userModel
+        self.user = user
+        self.streamingService = streamingService
+        self.enterPIN = PINModel(for: user)
+    }
 
     public var body: some View {
         @Bindable var settings = settings
@@ -70,13 +91,30 @@ public struct SettingsView: View {
                             isPresented: $showLogoutAlert
                         ) {
                             Button("Logout", role: .destructive) {
-                                self.userModel.deleteUser(user.id)
-                                Task { await self.streamingService.logout() }
-                                if self.userModel.userIDs.isEmpty { self.loginState = .loggedOut }
-                                else { self.loginState = .pickingUser }
+                                Task {
+                                    if self.user.pin != nil {
+                                        self.enterPIN.isPresented = true
+                                        switch await enterPIN.status {
+                                        case .success: self.enterPIN = PINModel(for: self.user)
+                                        case .canceled:
+                                            self.enterPIN = PINModel(for: self.user)
+                                            return
+                                        }
+                                    }
+                                    self.userModel.deleteUser(user.id)
+                                    await self.streamingService.logout()
+                                    if self.userModel.userIDs.isEmpty { self.loginState = .loggedOut }
+                                    else { self.loginState = .pickingUser }
+                                }
                             }
                         }
                     message: { Text(String(localized: "Are you sure you want \(user.displayName) to logout?")) }
+                        .fullScreenCover(isPresented: self.$enterPIN.isPresented) {
+                            PINEntry(model: self.enterPIN)
+                                .padding(64)
+                                .stingrayBackground()
+                                .ignoresSafeArea()
+                        }
                 }
             }
 

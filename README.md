@@ -81,6 +81,7 @@ Configure Stingray to look and feel how you want it.
   - If a PIN is configured, display the PIN entry screen on a cold boot even in "Manual" profile switching
   - Improved error logging for video players
   - If the limited bitrate is greater than the media stream's bitrate, do not show as limited in the player
+  - Require PIN for logging out
 - Cleanups
   - Repo Organization
     - Rename "Other-Assets" to "Other Assets"
