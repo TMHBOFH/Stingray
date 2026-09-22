@@ -10,6 +10,7 @@ import Foundation
 /// Local storage for modifying user-related data
 public protocol UserStorageProtocol {
     /// Get all user IDs for all streaming services
+    /// - Returns: Every known user ID, or an empty array if nobody has signed in
     func getUserIDs() -> [String]
     /// Set all user IDs to an array of IDs
     /// - Parameter userIDs: User IDs to set
@@ -31,11 +32,17 @@ public protocol UserStorageProtocol {
     /// Deletes only user data
     /// - Parameter userID: ID of the user to remove
     func deleteUser(userID: String)
+    /// Batches of keys that changed outside this process, forwarded from the underlying store
+    var externalChanges: AsyncStream<[StorageKeys]> { get }
 }
 
+/// Stores all the users for Stingray
 public final class UserStorage: UserStorageProtocol {
+    /// Underlying key-value storage
     public let basicStorage: BasicStorageProtocol
     
+    /// Creates user storage
+    /// - Parameter basicStorage: Store to read and write through
     public init(basicStorage: BasicStorageProtocol) { self.basicStorage = basicStorage }
     
     public func getUserIDs() -> [String] {
@@ -68,4 +75,6 @@ public final class UserStorage: UserStorageProtocol {
     public func deleteUser(userID: String) {
         self.basicStorage.delete(.user(userID))
     }
+
+    public var externalChanges: AsyncStream<[StorageKeys]> { self.basicStorage.externalChanges }
 }

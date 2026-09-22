@@ -74,6 +74,7 @@ Configure Stingray to look and feel how you want it.
     - Change roundness of buttons in the settings menu based on the Apple TV model
   - Filter libraries and search by genre and maturity
   - Sort libraries and search by title, sort title, duration, release date, and random
+  - Refresh individual libraries
   - Slightly darken the background of the Notes App theme to improve the legibility of buttons
   - Add a missing "No image available" placeholder for people with no images
   - Add marquee-style text for people's names and roles
@@ -98,7 +99,8 @@ Configure Stingray to look and feel how you want it.
       - Separate out SwiftUI Player tabs into their own structs
   - Remove unused `Equatable` conformance from `MediaCard`
   - Remove the `StreamingServiceProtocol` and `StreamingServiceBasicProtocol`
-  - Massively improve documentation around the `slidingLevenshteinDistance` function
+  - Document all the things
+    - Massively improve documentation around the `slidingLevenshteinDistance` function
   - Update all Swift files to use Xcode 27's reworked auto-indent formatting
   - Remove unused `Equatable` conformance from `MediaSource`
   - Remove practically unused `completed` and `unloaded` statuses for individual libraries
@@ -108,6 +110,7 @@ Configure Stingray to look and feel how you want it.
   - `User` is now a class, helping ensure data stays synced across the app
   - The active user is now stored in the `LoginStatus` state machine, replacing `UserModel.activeUser` in most cases
   - Reworked PIN mechanism to work asynchronously and force the use of the new `PINModel` for more reliable PIN usage
+  - Remove cloud DB migration
 - Bug Fixes
   - Specify do not sleep while playing video
   - Allow moving from media metadata to play button
@@ -120,6 +123,9 @@ Configure Stingray to look and feel how you want it.
   - Add error handling for failing to sync library version
   - Hitting cancel on the PIN entry screen no longer navigates to the switch user page
   - Add per-AppleTV-generation streaming compatibility
+  - Improve tracking for watched content
+  - Synchronize iCloud storage with models
+    - Fixes a bug where signing in on a new Apple TV doesn't load data correctly for the first time
 - Performance
   - Only calculate blur hash once and globally cache it
     - Improves speed to opening detail media views
@@ -141,6 +147,9 @@ Configure Stingray to look and feel how you want it.
   - Reduce hitching during video playback by moving playback updates off the UI thread
   - Add priority Jellyfin syncing
     - If a show is not fully synched when opened, request that show's special features and episodes separately from all the others
+- Improvements
+  - API
+    - Swapped from `/Users/{userID}/Views` to `/UserViews` with the userID as a parameter
 
 ### Media Picker
 
@@ -155,15 +164,9 @@ Configure Stingray to look and feel how you want it.
 
 - [ ] Rework library structure to support more library types, like collections and group by actor.
 - [ ] Library filtering.
-- [ ] Manual library refresh.
 
 ### Playback
 
 - [ ] Live TV.
 - [ ] Music Support.
 - [ ] Trickplay.
-
-### Code Quality
-
-- [ ] Break up the Detail Media View into smaller pieces.
-- [ ] Comment all class/struct/enum variables and functions.

@@ -1,5 +1,5 @@
 //
-//  User.swift
+//  UserModel.swift
 //  Stingray
 //
 //  Created by Ben Roberts on 12/16/25.
@@ -24,6 +24,14 @@ public protocol UserModelProtocol: AnyObject {
     /// - Parameter userID: ID of the user to delete
     func deleteUser(_ userID: String)
 
+    /// Creates a user with default settings, saves it, and adds it to the known user IDs
+    /// - Parameters:
+    ///   - serviceURL: URL of the streaming service
+    ///   - serviceType: Type of streaming service, carrying that service's credentials
+    ///   - serviceID: Unique ID of the service
+    ///   - id: Server-provided user ID, reused so the same account maps to the same user across sign-ins
+    ///   - displayName: Name to show on screen
+    /// - Returns: The stored user
     func createUser(
         serviceURL: URL,
         serviceType: ServiceType,
@@ -44,6 +52,9 @@ public protocol UserProtocol: AnyObject, Codable {
     /// Hands the user the storage it saves itself to whenever it changes. Pass `nil` to stop the user from saving.
     /// - Parameter storage: Storage to write changes to
     func attach(storage: UserStorageProtocol?)
+    /// Folds in settings that changed on another device, without writing them straight back out again
+    /// - Parameter other: A freshly loaded copy of this same user
+    func apply(from other: any UserProtocol)
 
     /// URL to the streaming service
     var serviceURL: URL { get }
@@ -83,6 +94,8 @@ public protocol UserProtocol: AnyObject, Codable {
     var showFilters: Bool { get set }
     /// Display sorting options in library views
     var showSorting: Bool { get set }
+    /// Display a button for refreshing a library
+    var showRefreshLibrary: Bool { get set }
 }
 
 /// Basic data to store about the user
@@ -102,6 +115,9 @@ public final class UserModel: UserModelProtocol {
 
     public private(set) var userIDs: Set<String> = []
 
+    /// Watches storage for changes made on other devices. Cancelled when the model goes away.
+    @ObservationIgnored private var reconcileTask: Task<Void, Never>?
+
     /// Create the model based on a storage medium
     /// - Parameter storage: The storage medium
     public init(storage: UserStorageProtocol) {
@@ -109,8 +125,44 @@ public final class UserModel: UserModelProtocol {
         self.userIDs = Set(self.storage.getUserIDs())
         self.activeUser = nil
 
+        self.setupICloudObservation()
+
         guard let userID = self.storage.getActiveUserID() else { return }
         self.activeUser = self.storage.getUser(userID: userID)
+    }
+
+    deinit { self.reconcileTask?.cancel() }
+
+    /// Starts folding changes made on other devices into the live models.
+    /// Incoming settings are merged into the existing `User` rather than replacing it, because views capture the user by
+    /// reference and would otherwise keep observing an orphaned instance.
+    private func setupICloudObservation() {
+        let changes = self.storage.externalChanges
+        self.reconcileTask = Task { @MainActor [weak self] in
+            for await keys in changes {
+                guard let self else { return }
+                for key in keys { self.reconcileICloudChanges(key) }
+            }
+        }
+    }
+
+    /// Applies a change from iCloud to memory.
+    /// - Parameter key: The key that changed
+    private func reconcileICloudChanges(_ key: StorageKeys) {
+        switch key {
+        case .userIDs: self.userIDs = Set(self.storage.getUserIDs())
+        case .user(let id):
+            // Inactive profiles are re-read from storage whenever they're shown, so only the live one needs refreshing
+            guard id == self.activeUser?.id, let activeUser = self.activeUser else { return }
+            guard let updatedUser = self.storage.getUser(userID: id)
+            else {
+                // Either the profile was removed elsewhere or the payload didn't decode
+                Log.warning("Could not reload user \(id) after an external change, so the in-memory copy was kept")
+                return
+            }
+            activeUser.apply(from: updatedUser)
+        default: return
+        }
     }
 
     public func getUsers() -> [User] {
@@ -158,7 +210,8 @@ public final class UserModel: UserModelProtocol {
             preferredLanguage: nil,
             searchEpisodeTitles: false,
             showFilters: true,
-            showSorting: true
+            showSorting: true,
+            showRefreshLibrary: true
         )
         // Store the user
         self.storage.upsertUser(user: user)
@@ -190,6 +243,8 @@ public final class UserModel: UserModelProtocol {
 public final class User: UserProtocol, Codable, Identifiable, Hashable {
     /// Storage the user writes itself back to whenever it changes. Attached by `UserStorage`, so it is never encoded.
     @ObservationIgnored private var storage: UserStorageProtocol?
+    /// Set while folding in a change from another device, so the user doesn't echo that change straight back to the cloud
+    @ObservationIgnored private var isApplyingExternalChange = false
 
     public var serviceURL: URL { didSet { self.save() } }
     public var serviceType: ServiceType { didSet { self.save() } }
@@ -211,11 +266,41 @@ public final class User: UserProtocol, Codable, Identifiable, Hashable {
     public var searchEpisodeTitles: Bool { didSet { self.save() } }
     public var showFilters: Bool { didSet { self.save() } }
     public var showSorting: Bool { didSet { self.save() } }
+    public var showRefreshLibrary: Bool { didSet { self.save() } }
 
     public func attach(storage: UserStorageProtocol?) { self.storage = storage }
 
+    /// Copies another instance's settings onto this one without writing them back to storage. By mutating in place, we don't have to worry
+    /// about views holding stale data.
+    /// - Parameter other: A freshly loaded copy of this same user, carrying the incoming values
+    public func apply(from newUser: any UserProtocol) {
+        self.isApplyingExternalChange = true
+        defer { self.isApplyingExternalChange = false }
+
+        // Only assign on a real difference, since @Observable invalidates readers on every set, equal value or not
+        if self.serviceURL != newUser.serviceURL { self.serviceURL = newUser.serviceURL }
+        if self.serviceType != newUser.serviceType { self.serviceType = newUser.serviceType }
+        if self.serviceID != newUser.serviceID { self.serviceID = newUser.serviceID }
+        if self.usesSubtitles != newUser.usesSubtitles { self.usesSubtitles = newUser.usesSubtitles }
+        if self.pin != newUser.pin { self.pin = newUser.pin }
+        if self.autoplay != newUser.autoplay { self.autoplay = newUser.autoplay }
+        if self.darkTheme != newUser.darkTheme { self.darkTheme = newUser.darkTheme }
+        if self.lightTheme != newUser.lightTheme { self.lightTheme = newUser.lightTheme }
+        if self.playbackSpeed != newUser.playbackSpeed { self.playbackSpeed = newUser.playbackSpeed }
+        if self.loadThumbnailArt != newUser.loadThumbnailArt { self.loadThumbnailArt = newUser.loadThumbnailArt }
+        if self.loadMediaBackgroundArt != newUser.loadMediaBackgroundArt { self.loadMediaBackgroundArt = newUser.loadMediaBackgroundArt }
+        if self.replaceLogosWithText != newUser.replaceLogosWithText { self.replaceLogosWithText = newUser.replaceLogosWithText }
+        if self.preferredLangauge != newUser.preferredLangauge { self.preferredLangauge = newUser.preferredLangauge }
+        if self.searchEpisodeTitles != newUser.searchEpisodeTitles { self.searchEpisodeTitles = newUser.searchEpisodeTitles }
+        if self.showFilters != newUser.showFilters { self.showFilters = newUser.showFilters }
+        if self.showSorting != newUser.showSorting { self.showSorting = newUser.showSorting }
+        if self.showRefreshLibrary != newUser.showRefreshLibrary { self.showRefreshLibrary = newUser.showRefreshLibrary }
+    }
+
     /// Writes the user back to permanent storage. Called for every change, so no caller has to remember to save.
     private func save() {
+        // A small hacky state thing to prevent posting changes to the cloud when it's the cloud that started the change
+        guard !self.isApplyingExternalChange else { return }
         guard let storage = self.storage
         else {
             Log.warning("User \(self.id) changed before being attached to storage, so the change was not saved")
@@ -228,13 +313,36 @@ public final class User: UserProtocol, Codable, Identifiable, Hashable {
     private enum CodingKeys: String, CodingKey {
         case serviceURL, serviceType, serviceID, id, displayName, usesSubtitles, pin, autoplay, darkTheme, lightTheme, playbackSpeed
         case loadThumbnailArt, loadMediaBackgroundArt, replaceLogosWithText, preferredLangauge, searchEpisodeTitles, showFilters
-        case showSorting
+        case showSorting, showRefreshLibrary
     }
 
     public static func == (lhs: User, rhs: User) -> Bool { lhs.id == rhs.id }
 
     public func hash(into hasher: inout Hasher) { hasher.combine(self.id) }
 
+    /// Creates a user with every setting supplied explicitly.
+    /// Call using `UserModelProtocol.createUser(...)`, which fills in Stingray's defaults and registers the user.
+    /// - Parameters:
+    ///   - serviceURL: URL of the streaming service
+    ///   - serviceType: Type of streaming service, carrying that service's credentials
+    ///   - serviceID: Unique ID of the service
+    ///   - id: Server-provided user ID
+    ///   - storage: Storage the user saves itself back to on every change
+    ///   - displayName: Name to show on screen
+    ///   - usesSubtitles: Whether the viewer wants subtitles on by default
+    ///   - pin: Short password required to open this profile. `nil` for no PIN
+    ///   - autoplay: Whether to roll into the next episode automatically
+    ///   - darkTheme: Theme to use in system dark mode
+    ///   - lightTheme: Theme to use in system light mode
+    ///   - playbackSpeed: Default playback rate
+    ///   - loadThumbnailArt: Whether to show poster art, or titles only
+    ///   - loadMediaBackgroundArt: Whether to show backdrop art on detail views
+    ///   - replaceLogosWithText: Whether to show media logos, or plain titles
+    ///   - preferredLanguage: Language to render Stingray in. `nil` follows the Apple TV
+    ///   - searchEpisodeTitles: Whether search should also match episode titles
+    ///   - showFilters: Whether to show filter menus in library views
+    ///   - showSorting: Whether to show sort menus in library views
+    ///   - showRefreshLibrary: Whether to show the library refresh button
     public init(
         serviceURL: URL,
         serviceType: ServiceType,
@@ -254,7 +362,8 @@ public final class User: UserProtocol, Codable, Identifiable, Hashable {
         preferredLanguage: Locale?,
         searchEpisodeTitles: Bool,
         showFilters: Bool,
-        showSorting: Bool
+        showSorting: Bool,
+        showRefreshLibrary: Bool
     ) {
         self.id = id
         self.displayName = displayName
@@ -275,6 +384,7 @@ public final class User: UserProtocol, Codable, Identifiable, Hashable {
         self.searchEpisodeTitles = searchEpisodeTitles
         self.showFilters = showFilters
         self.showSorting = showSorting
+        self.showRefreshLibrary = showRefreshLibrary
     }
 
     /// Create a user from encoded JSON.
@@ -283,25 +393,26 @@ public final class User: UserProtocol, Codable, Identifiable, Hashable {
         do {
             let container = try decoder.container(keyedBy: CodingKeys.self)
 
-            serviceURL = try container.decode(URL.self, forKey: .serviceURL)
-            serviceType = try container.decode(ServiceType.self, forKey: .serviceType)
-            serviceID = try container.decode(String.self, forKey: .serviceID)
-            id = try container.decode(String.self, forKey: .id)
-            displayName = try container.decode(String.self, forKey: .displayName)
+            self.serviceURL = try container.decode(URL.self, forKey: .serviceURL)
+            self.serviceType = try container.decode(ServiceType.self, forKey: .serviceType)
+            self.serviceID = try container.decode(String.self, forKey: .serviceID)
+            self.id = try container.decode(String.self, forKey: .id)
+            self.displayName = try container.decode(String.self, forKey: .displayName)
             // Settings
-            pin = try container.decodeIfPresent(String.self, forKey: .pin)
-            autoplay = (try? container.decodeIfPresent(Bool.self, forKey: .autoplay)) ?? false
-            usesSubtitles = (try? container.decodeIfPresent(Bool.self, forKey: .usesSubtitles)) ?? false
-            darkTheme = (try? container.decodeIfPresent(Themes.self, forKey: .darkTheme)) ?? .deepSea
-            lightTheme = (try? container.decodeIfPresent(Themes.self, forKey: .lightTheme)) ?? .beach
-            playbackSpeed = (try? container.decodeIfPresent(PlaybackSpeed.self, forKey: .playbackSpeed)) ?? .one
-            loadThumbnailArt = (try? container.decodeIfPresent(Bool.self, forKey: .loadThumbnailArt)) ?? true
-            loadMediaBackgroundArt = (try? container.decodeIfPresent(Bool.self, forKey: .loadMediaBackgroundArt)) ?? true
-            replaceLogosWithText = (try? container.decodeIfPresent(Bool.self, forKey: .replaceLogosWithText)) ?? false
-            preferredLangauge = (try? container.decodeIfPresent(Locale.self, forKey: .preferredLangauge))
-            searchEpisodeTitles = (try? container.decodeIfPresent(Bool.self, forKey: .searchEpisodeTitles)) ?? false
-            showFilters = (try? container.decodeIfPresent(Bool.self, forKey: .showFilters)) ?? true
-            showSorting = (try? container.decodeIfPresent(Bool.self, forKey: .showSorting)) ?? true
+            self.pin = try container.decodeIfPresent(String.self, forKey: .pin)
+            self.autoplay = (try? container.decodeIfPresent(Bool.self, forKey: .autoplay)) ?? false
+            self.usesSubtitles = (try? container.decodeIfPresent(Bool.self, forKey: .usesSubtitles)) ?? false
+            self.darkTheme = (try? container.decodeIfPresent(Themes.self, forKey: .darkTheme)) ?? .deepSea
+            self.lightTheme = (try? container.decodeIfPresent(Themes.self, forKey: .lightTheme)) ?? .beach
+            self.playbackSpeed = (try? container.decodeIfPresent(PlaybackSpeed.self, forKey: .playbackSpeed)) ?? .one
+            self.loadThumbnailArt = (try? container.decodeIfPresent(Bool.self, forKey: .loadThumbnailArt)) ?? true
+            self.loadMediaBackgroundArt = (try? container.decodeIfPresent(Bool.self, forKey: .loadMediaBackgroundArt)) ?? true
+            self.replaceLogosWithText = (try? container.decodeIfPresent(Bool.self, forKey: .replaceLogosWithText)) ?? false
+            self.preferredLangauge = (try? container.decodeIfPresent(Locale.self, forKey: .preferredLangauge))
+            self.searchEpisodeTitles = (try? container.decodeIfPresent(Bool.self, forKey: .searchEpisodeTitles)) ?? false
+            self.showFilters = (try? container.decodeIfPresent(Bool.self, forKey: .showFilters)) ?? true
+            self.showSorting = (try? container.decodeIfPresent(Bool.self, forKey: .showSorting)) ?? true
+            self.showRefreshLibrary = (try? container.decodeIfPresent(Bool.self, forKey: .showRefreshLibrary)) ?? true
         }
         catch DecodingError.keyNotFound(let key, _) { throw JSONError.missingKey(key.stringValue, "User") }
         catch DecodingError.valueNotFound(_, let context) {
@@ -323,19 +434,20 @@ public final class User: UserProtocol, Codable, Identifiable, Hashable {
             try container.encode(id, forKey: .id)
             try container.encode(displayName, forKey: .displayName)
             // Settings
-            try container.encodeIfPresent(pin, forKey: .pin)
-            try container.encode(autoplay, forKey: .autoplay)
-            try container.encode(usesSubtitles, forKey: .usesSubtitles)
-            try container.encode(darkTheme, forKey: .darkTheme)
-            try container.encode(lightTheme, forKey: .lightTheme)
-            try container.encode(playbackSpeed, forKey: .playbackSpeed)
-            try container.encode(loadThumbnailArt, forKey: .loadThumbnailArt)
-            try container.encode(loadMediaBackgroundArt, forKey: .loadMediaBackgroundArt)
-            try container.encode(replaceLogosWithText, forKey: .replaceLogosWithText)
-            try container.encodeIfPresent(preferredLangauge, forKey: .preferredLangauge)
-            try container.encode(searchEpisodeTitles, forKey: .searchEpisodeTitles)
-            try container.encode(showFilters, forKey: .showFilters)
-            try container.encode(showSorting, forKey: .showSorting)
+            try container.encodeIfPresent(self.pin, forKey: .pin)
+            try container.encode(self.autoplay, forKey: .autoplay)
+            try container.encode(self.usesSubtitles, forKey: .usesSubtitles)
+            try container.encode(self.darkTheme, forKey: .darkTheme)
+            try container.encode(self.lightTheme, forKey: .lightTheme)
+            try container.encode(self.playbackSpeed, forKey: .playbackSpeed)
+            try container.encode(self.loadThumbnailArt, forKey: .loadThumbnailArt)
+            try container.encode(self.loadMediaBackgroundArt, forKey: .loadMediaBackgroundArt)
+            try container.encode(self.replaceLogosWithText, forKey: .replaceLogosWithText)
+            try container.encodeIfPresent(self.preferredLangauge, forKey: .preferredLangauge)
+            try container.encode(self.searchEpisodeTitles, forKey: .searchEpisodeTitles)
+            try container.encode(self.showFilters, forKey: .showFilters)
+            try container.encode(self.showSorting, forKey: .showSorting)
+            try container.encode(self.showRefreshLibrary, forKey: .showRefreshLibrary)
         }
         catch { throw JSONError.failedJSONEncode("User \(self.displayName)") }
     }
@@ -357,6 +469,7 @@ public enum PlaybackSpeed: CaseIterable, Codable {
     /// 2x the speed of realtime
     case two
 
+    /// Rate to hand to `AVPlayer`
     public var value: Float {
         switch self {
         case .quarter: return 0.25
@@ -368,6 +481,7 @@ public enum PlaybackSpeed: CaseIterable, Codable {
         }
     }
 
+    /// User-facing multiplier label, ex. `"1.5x"`
     public var name: String {
         switch self {
         case .quarter: return "0.25x"
@@ -383,8 +497,10 @@ public enum PlaybackSpeed: CaseIterable, Codable {
 /// Types of streaming services
 /// Temporary name for compatibility until migration is complete
 public enum ServiceType: Codable, Hashable {
+    /// A Jellyfin server, carrying that user's credentials for it
     case Jellyfin(UserJellyfin)
 
+    /// The service's name, as persisted in the encoded `type` field
     public var rawValue: String {
         switch self {
         case .Jellyfin:
@@ -397,6 +513,8 @@ public enum ServiceType: Codable, Hashable {
         case type, jellyfinData
     }
 
+    /// Encode the service type into JSON, tagging it so the matching case can be rebuilt.
+    /// - Parameter encoder: JSON encoder
     public func encode(to encoder: Encoder) throws(JSONError) {
         var container = encoder.container(keyedBy: CodingKeys.self)
         switch self {
@@ -441,6 +559,8 @@ public enum ServiceType: Codable, Hashable {
 
 /// Jellyfin-specific userdata
 public struct UserJellyfin: Codable, Hashable {
+    /// Token authenticating this user's requests
     public let accessToken: String
+    /// Server-issued session identifier, reported alongside playback progress
     public let sessionID: String
 }

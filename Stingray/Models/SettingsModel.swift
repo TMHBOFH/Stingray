@@ -58,7 +58,7 @@ public final class SettingsModel {
             switch self {
             case .askOnResume:
                 return """
-                You'll be prompted for your choice of account when Jellyfin launches or opens from the background. \
+                You'll be prompted for your choice of account when Stingray launches or opens from the background. \
                 This can be annoying to some and triggers on things like Control Center. \
                 If only one user is signed in, the user picker screen will be skipped.
                 """
@@ -128,6 +128,12 @@ public final class SettingsModel {
     public var showSorting: Bool {
         get { self.user?.showSorting ?? true }
         set(newValue) { self.user?.showSorting = newValue }
+    }
+    
+    /// Display a button for resyncing a library
+    public var showRefreshLibrary: Bool {
+        get { self.user?.showRefreshLibrary ?? true }
+        set(newValue) { self.user?.showRefreshLibrary = newValue }
     }
 
     /// A short password required to show the users's content

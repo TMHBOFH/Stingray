@@ -22,13 +22,21 @@ public enum LoginState {
     case pickingUser
 }
 
+/// The root view, owning every app-wide model and driving the logged-out / picking-user / logged-in state machine.
 public struct ContentView: View {
+    /// Which phase of sign-in the app is in
     @State private var loginState: LoginState = .loggedOut
+    /// A pending deep link, forwarded to `DashboardView` once signed in
     @State private var deepLinkRequest: DeepLinkRequest?
+    /// App navigation, shared with every child view
     @State private var navigationPath: NavigationPath
+    /// User and app settings, published into the environment
     @State private var settings: SettingsModel
+    /// Active theme, published into the environment
     @State private var theme: ThemeModel
+    /// Store of every known user
     @State private var userModel: UserModel
+    /// In-app purchase state, published into the environment
     @State private var purchases: PurchasesModel
     /// Gates cold-boot auto sign-in behind a PIN when the resumed user has one set
     @State private var pinModel: PINModel?
@@ -37,6 +45,10 @@ public struct ContentView: View {
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.locale) private var locale
 
+    /// Opens permanent storage and builds every app-wide model from it.
+    /// Throwing here rather than degrading is deliberate: if storage can't be opened, continuing risks writing over the user's existing
+    /// data. `StingrayApp` catches this and shows an error screen instead.
+    /// - Throws: `SetupErrors.databaseError` when permanent storage cannot be opened
     public init() throws(SetupErrors) {
         let defaultsStorage: HybridBasicStorage
         do { defaultsStorage = try HybridBasicStorage() }
@@ -189,8 +201,19 @@ public struct ContentView: View {
                 }
             }
         }
+        .onChange(of: self.userModel.userIDs) { _, _ in
+            // Accounts can arrive from iCloud after the launch task has already given up and shown the login screen
+            guard case .loggedOut = self.loginState,
+                  !self.userModel.getUsers().isEmpty
+            else { return }
+            Log.info("Accounts arrived from iCloud, switching to the profile picker")
+            self.loginState = .pickingUser
+        }
     }
 
+    /// Parses a `stingray://media?id=…&parentID=…` URL into a `DeepLinkRequest`.
+    /// Malformed links are logged and dropped rather than surfaced, since they arrive from outside the app.
+    /// - Parameter url: URL the system opened Stingray with
     private func handleDeepLink(url: URL) {
         Log.info("Deep link received: \(url.absoluteString)")
 
@@ -223,9 +246,13 @@ public struct ContentView: View {
     }
 }
 
+/// A request to open a specific piece of media, arriving from a Top Shelf deep link.
 public struct DeepLinkRequest: Equatable, Hashable {
+    /// Server ID of the media to open
     public let mediaID: String
+    /// Library the media belongs to, checked first during lookup
     public let parentID: String
+    /// Makes each request distinct, so opening the same media twice still triggers `onChange`
     public let id = UUID() // Ensure each request is unique
 }
 

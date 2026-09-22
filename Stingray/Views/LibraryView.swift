@@ -7,18 +7,20 @@
 
 import SwiftUI
 
+/// One library tab: a filterable, sortable grid of its media with a refresh button.
 public struct LibraryView: View {
+    /// Library being displayed. Media streams into it while the view is open
     @State public var library: any LibraryProtocol
 
+    /// App navigation, forwarded to each media card
     @Binding public var navigation: NavigationPath
 
-    public let streamingService: MediaImageProviding
-    public let cardWidth = CGFloat(200)
-    public let cardSpacing = CGFloat(50)
+    /// Streaming service used for artwork and for resyncing the library
+    public let streamingService: MediaImageProviding & LibraryProviding
 
     public var body: some View {
         ScrollView {
-            switch library.media {
+            switch self.library.media {
             case .waiting: ProgressView()
             case .error(let err): ErrorView(error: err, summary: "The server formatted the library's media unexpectedly.")
             case .available(let allMedia):
@@ -29,10 +31,17 @@ public struct LibraryView: View {
                         streamingService: self.streamingService,
                         allMedia: allMedia,
                         navigation: $navigation
-                    )
+                    ) {
+                        Button {
+                            Task { await self.streamingService.resync(library: self.library) }
+                        }
+                        label: { Text(String(localized: "Refresh")) }
+
+                    }
                     LibraryInfoView(library: self.library)
                         .padding(.top)
-                } else {
+                }
+                else {
                     VStack(alignment: .center) {
                         Text("This library appears to be empty.")
                         Text("Media types like collections, playlists, and music aren't yet supported.")
@@ -44,20 +53,36 @@ public struct LibraryView: View {
     }
 }
 
-public struct FilteredMediaGridView: View {
+/// A media grid preceded by a scrolling row of filter, sort, and caller-supplied buttons. Filtering and sorting happen here rather than on
+/// the server, since all media is already local.
+public struct FilteredMediaGridView<ButtonContent: View>: View {
+    /// Every genre available to filter by
     public let availableGenres: Set<String>
+    /// Every maturity rating available to filter by
     public let availableMaturityRatings: Set<String>
+    /// Streaming service used for card artwork
     public let streamingService: any MediaImageProviding
+    /// Unfiltered, unsorted media. `filteredMedia` derives the displayed list from it
     public let allMedia: [any MediaRepresentableProtocol]
+    /// Extra buttons appended to the button row, ex. the library refresh button
+    public var additionalButtons: () -> ButtonContent
+    /// Selected genres. Media must match every one of them
     @State private var appliedGenreFilters: Set<String> = []
+    /// Selected maturity ratings. Media must match any one of them
     @State private var appliedMaturityRatingFilters: Set<String> = []
+    /// Field currently sorted on
     @State private var sortBy: SortType = .sortTitle
+    /// Sort direction. Ignored when sorting randomly
     @State private var sortOrderAscending: Bool = true
     /// Seed for the random sort. Kept in state so the shuffle is stable across re-renders and only changes when Random is (re)selected.
     @State private var randomSeed: UInt64 = .random(in: .min ... .max)
+
     @Binding public var navigation: NavigationPath
 
     @Environment(SettingsModel.self) private var settings
+    /// Width of the button row's scroll view. A `ScrollView` proposes an unbounded width to its content, so the
+    /// visible width has to be measured and fed back in as a minimum to keep short rows centered.
+    @State private var buttonRowContainerWidth: CGFloat = 0
 
     /// Media matching every applied genre filter. Computed so it always reflects the current`allMedia`
     private var filteredMedia: [any MediaRepresentableProtocol] {
@@ -95,8 +120,46 @@ public struct FilteredMediaGridView: View {
 
         return filtered.sorted(by: areInOrder)
     }
+    
+    /// Display media in a grid
+    /// - Parameters:
+    ///   - availableGenres: All genres in the media
+    ///   - availableMaturityRatings: All level of maturity in the media
+    ///   - streamingService: Streaming service to load images from
+    ///   - allMedia: Media to display. The leading divider is pre-calculated
+    ///   - navigation: App navigation
+    ///   - additionalButtons: Any additional buttons to show
+    public init(
+        availableGenres: Set<String>,
+        availableMaturityRatings: Set<String>,
+        streamingService: any MediaImageProviding,
+        allMedia: [any MediaRepresentableProtocol],
+        navigation: Binding<NavigationPath>,
+        @ViewBuilder additionalButtons: @escaping () -> ButtonContent = { EmptyView() }
+    ) {
+        self.availableGenres = availableGenres
+        self.availableMaturityRatings = availableMaturityRatings
+        self.additionalButtons = additionalButtons
+        self.streamingService = streamingService
+        self.allMedia = allMedia
+        self._navigation = navigation
+    }
 
     public var body: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            self.buttonRow
+                // Centers the row when it fits, and lets it grow past the container (and scroll) when it doesn't. AI generated
+                .frame(minWidth: self.buttonRowContainerWidth)
+        }
+        .scrollClipDisabled()
+        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { self.buttonRowContainerWidth = $0 }
+        .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
+        .focusSection()
+        MediaGridView(allMedia: self.filteredMedia, streamingService: self.streamingService, navigation: $navigation)
+            .focusSection()
+    }
+
+    @ViewBuilder private var buttonRow: some View {
         HStack(spacing: 25) {
             if self.settings.showFilters {
                 Menu {
@@ -192,21 +255,26 @@ public struct FilteredMediaGridView: View {
                     }
                 }
             }
+            if (self.settings.showFilters || self.settings.showSorting) && ButtonContent.self != EmptyView.self { Divider() }
+            self.additionalButtons()
         }
-        .focusSection()
-
-        MediaGridView(allMedia: self.filteredMedia, streamingService: self.streamingService, navigation: $navigation)
-            .focusSection()
     }
 }
 
+/// Orderings offered by the library and search sort menu.
 fileprivate enum SortType: CaseIterable {
+    /// The server's sort title, which honors user-set aliases. The default
     case sortTitle
+    /// The media's original title, ignoring aliases
     case title
+    /// Runtime, or per-episode runtime for shows
     case duration
+    /// Original release date
     case releaseDate
+    /// Seeded shuffle. Ignores sort direction and is reshuffled on demand
     case random
 
+    /// User-facing, localized menu label
     var rawValue: String {
         switch self {
         case .sortTitle: return String(localized: "Sort Title")
@@ -238,13 +306,19 @@ fileprivate struct SeededGenerator: RandomNumberGenerator {
     }
 }
 
+/// A lazily loaded, adaptive grid of media cards.
 public struct MediaGridView: View {
+    /// Gap between cards, horizontally and vertically
     public static let cardSpacing = 50.0
+    /// Media to display, already filtered and sorted
     public let allMedia: [any MediaRepresentableProtocol]
+    /// Streaming service used for card artwork
     public let streamingService: any MediaImageProviding
 
+    /// App navigation, forwarded to each media card
     @Binding public var navigation: NavigationPath
 
+    /// Columns sized to exactly one card, so cards never stretch to fill the row
     private static let columns = [
         GridItem(.adaptive(minimum: MediaCard.cardSize.width, maximum: MediaCard.cardSize.width), spacing: Self.cardSpacing)
     ]
